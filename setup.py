@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="0.0.9",
+    version="0.1.0",
     author="Ian Gow",
     author_email="ian.gow@unimelb.edu.au",
     description="Download wrds tables and upload to PostgreSQL, upload SAS file to PG",
