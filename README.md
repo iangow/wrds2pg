@@ -50,7 +50,7 @@ Use `fpath` to specify file path.
 Here are some examples.
 
 ```py
-from wrds2pg.wrds2pg import wrds_update
+from wrds2pg import wrds_update
 
 # 1. Download crsp.mcti from wrds and upload to pg as crps.mcti
 # Simplest version
