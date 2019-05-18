@@ -5,10 +5,10 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="0.1.2",
+    version="0.1.3",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
-    description="Download wrds tables and upload to PostgreSQL, upload SAS file to PG",
+    description="Import WRDS tables or SAS data into PostgreSQL.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/iangow-public/wrds_pg/",
