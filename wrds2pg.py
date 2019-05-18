@@ -144,7 +144,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
     df['postgres_type'] = df.apply(code_row, axis=1)
-    make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + 
+    make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + \
                       df.apply(get_row_sql, axis=1).str.cat(sep=", ") + ")"
 
     # Identify the datetime fields. These need special handling.
