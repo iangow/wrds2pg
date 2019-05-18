@@ -5,36 +5,25 @@ This software has two functions:
 
 The code will only work if you have access to WRDS and to the data in question.
 ## Requirements
-#### 1. Git
-While not strictly necessary to use the scripts here, [Git](https://git-scm.com/downloads) likely makes it easier to download and to update.
 
-If all Git repositories are kept in `~/git`, use the following commands to clone this repository:
-```
-cd ~/git
-git clone https://github.com/iangow/wrds2pg.git
-```
-This will create a copy of the repository in `~/git/wrds2pg`. Note that one can get updates to the repository by going to the directory and "pulling" the latest code:
-```
-cd ~/git/wrds2pg
-git pull
-```
-Alternatively, you can fork the repository on GitHub and then clone. Cloning using the SSH URL (e.g., `git@github.com:iangow/wrds2pg.git`) is necessary for Git pulling and pushing to work well in RStudio.
+### 2. Python
+The software uses Python 3 and depends on Pandas, SQLAlchemy and Paramiko. In addition, the Python scripts generally interact with PostgreSQL using SQLAlchemy and the [Psycopg](http://initd.org/psycopg/) library.
 
-#### 2. Python
-The software uses Python 3 and depends on Pandas, SQLAlchemy and Paramiko. In addition, the Python scripts generally interact with PostgreSQL using the psycopg (see [here](http://initd.org/psycopg/)) and SQLAlchemy.
-
-#### 3. A WRDS ID
-To use public-key authentication to access WRDS, follow hints taken from [here](https://debian-administration.org/article/152/Password-less_logins_with_OpenSSH) to set up a public key. Copy that key to the WRDS server from the terminal on my computer. (Note that this code assumes you have a directory `.ssh` in your home directory. If not, log into WRDS via SSH, then type `mkdir ~/.ssh` to create this.) Here's code to create the key and send it to WRDS (for me):
+### 3. A WRDS ID
+To use public-key authentication to access WRDS, follow hints taken from [here](https://debian-administration.org/article/152/Password-less_logins_with_OpenSSH) to set up a public key.
+Copy that key to the WRDS server from the terminal on my computer. 
+(Note that this code assumes you have a directory `.ssh` in your home directory. If not, log into WRDS via SSH, then type `mkdir ~/.ssh` to create this.) 
+Here's code to create the key and send it to WRDS (for me):
 ```
 ssh-keygen -t rsa
 cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/authorized_keys"
 ```
 Use an empty passphrase in setting up the key so that the scripts can run without user intervention.
 
-#### 4. PostgreSQL
+### 4. PostgreSQL
 You should have a PostgreSQL database to store the data. There are also some data dependencies in that some scripts assume the existence of other data in the database. Also, I assume the existence of a role `wrds` (SQL `CREATE ROLE wrds` works to add this if it is absent).
 
-#### 5. Environment variables
+### 5. Environment variables
 I am migrating the scripts, etc., from using hard-coded values (e.g., my WRDS ID `iangow`) to using environment variales. 
 Environment variables that I use include:
 
@@ -52,27 +41,18 @@ export WRDS_ID="iangow"
 export PGUSER="igow"
 ```
 
-```
-source ~/.profile
-```
+## Using the function `wrds_update`.
 
-I also set them in `~/.Rprofile`, as RStudio doesn't seem to pick up the settings in `~/.profile` in recent versions of OS X:
+### 1. WRDS Settings
+Set `WRDS_ID`  using either `wrds_id=your_wrds_id` in the function call or the environment variable `WRDS_ID`.
 
-```
-Sys.setenv(PGHOST="localhost")
-Sys.setenv(PGDATABASE="crsp")
-```
+### 2. PG Settings
+If you have set `PGHOST`, `PGDATABASE`, `PGUSER` as environment variables, the software can grep them. Otherwise, users are expected to specify them when using `wrds_udpate()`. Default `PGPORT` is`5432`.
+Again, if you follow the instructions above closely, you don't need to do anything.
 
-## Settings
-#### 1. WRDS Settings
-Set `WRDS_ID` with `wrds_id=your_wrds_id`, otherwise the software will grep from OS environment variables. If you follow the instructions above closely, you don't need to do anything.
+Two arguments `table` and `schema` are required.
 
-#### 2. PG Settings
-If you have set `PGHOST`, `PGDATABASE`, `PGUSER` as environment variables, the software can grep them. Otherwise, users are expected to specify them when using `wrds_udpate()`. Default `PGPORT` is`5432`. Again, if you follow the instructions above closely, you don't need to do anything.
-
-Two variables `table` and `schema` are required.
-
-#### 3. Table Settings
+### 3. Table Settings
 To tailor tables, specify the following variables:
 
 `fix_missing`: set to `True` to fix missing values. Default value is `False`. 
@@ -87,8 +67,9 @@ To tailor tables, specify the following variables:
 
 `force`: set to `True` to force update. Default value is `False`.
 
-### Upload SAS File
-The software can also upload SAS file directly to PG. You need to have local SAS in order to use this function.
+## Importing SAS data into PostgreSQL
+The software can also upload SAS file directly to PostgreSQL. 
+You need to have local SAS in order to use this function.
 
 Use `fpath` to specify file path.
 
