@@ -327,15 +327,18 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
 
 def wrds_process_to_pg(table_name, schema, engine, p):
     # The first line has the variable names ...
+    
     var_names = p.readline().rstrip().lower().split(sep=",")
 
     # ... the rest is the data
     copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
     copy_cmd += " FROM STDIN CSV ENCODING 'latin1'"
 
+    
     connection = engine.raw_connection()
     try:
         cursor = connection.cursor()
+        cursor.execute("SET DateStyle TO 'ISO, MDY'")
         cursor.copy_expert(copy_cmd, p)
         cursor.close()
         connection.commit()
