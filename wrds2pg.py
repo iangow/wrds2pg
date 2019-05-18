@@ -4,8 +4,10 @@ from io import StringIO
 import re, subprocess, os, paramiko
 from time import gmtime, strftime
 from sqlalchemy import create_engine
+from os import getenv
 
 client = paramiko.SSHClient()
+wrds_id = getenv("WRDS_ID")
 
 def get_process(sas_code, wrds_id=None, fpath=None):
 
@@ -94,18 +96,22 @@ def sas_to_pandas(sas_code, wrds_id, fpath):
 
     return(df)
 
-def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", rename="", return_sql=True):
+def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep="", rename="", return_sql=True, \
+                  alt_table_name=None):
     if fpath:
         libname_stmt = "libname %s '%s';" % (schema, fpath)
     else:
         libname_stmt = ""
+
+    if not alt_table_name:
+        alt_table_name = table_name
 
     sas_template = """
         options nonotes nosource;
         %s
 
         * Use PROC CONTENTS to extract the information desired.;
-        proc contents data=%s.%s(drop=%s obs=1 %s) out=schema noprint;
+        proc contents data=%s.%s(drop=%s keep=%s obs=1 %s) out=schema noprint;
         run;
 
         proc sort data=schema;
@@ -127,13 +133,18 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", rename=
         drop_str = "drop=" + drop
     else:
         drop_str = ""
+        
+    if keep != '':
+        keep_str = "keep=" + keep 
+    else:
+        keep_str = ""
 
-    sas_code = sas_template % (libname_stmt, schema, table_name, drop_str, rename_str)
-
+    sas_code = sas_template % (libname_stmt, schema, table_name, drop_str, keep_str, rename_str)
+    # print(sas_code)
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
     df['postgres_type'] = df.apply(code_row, axis=1)
-    make_table_sql = "CREATE TABLE " + schema + "." + table_name + " (" + \
+    make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + 
                       df.apply(get_row_sql, axis=1).str.cat(sep=", ") + ")"
 
     # Identify the datetime fields. These need special handling.
@@ -147,7 +158,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", rename=
         return df
 
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
-                     drop="", fix_cr = False, fix_missing = False, obs="", rename=""):
+                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename=""):
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
@@ -168,7 +179,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
     else:
         rename_str = ""
 
-    if fix_missing or drop != '' or obs != '':
+    if fix_missing or drop != '' or obs != '' or keep !='':
         # If need to fix special missing values, then convert them to
         # regular missing values, then run PROC EXPORT
         if table_name == "dsf":
@@ -182,9 +193,13 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             obs_str = ""
 
         drop_str = "drop=" + drop
-
-        if obs != '' or drop != '' or rename != '':
-            sas_table = table_name + "(" + drop_str + obs_str + rename_str + ")"
+        keep_str = "keep=" + keep
+        
+        if keep:
+            print(keep_str)
+        
+        if obs != '' or drop != '' or rename != '' or keep != '':
+            sas_table = table_name + "(" + drop_str + keep_str + obs_str + rename_str + ")"
         else:
             sas_table = table_name
 
@@ -296,22 +311,27 @@ def set_table_comment(table_name, schema, comment, engine):
     return True
 
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
-               fpath=None, fix_missing=False, fix_cr=False, drop="", obs="", rename=""):
+               fpath=None, fix_missing=False, fix_cr=False, drop="", obs="", rename="", keep="",
+               alt_table_name = None):
+
+    if not alt_table_name:
+        alt_table_name = table_name
 
     make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
-                                    fpath=fpath, schema=schema, drop=drop, rename=rename)
+                                    fpath=fpath, schema=schema, drop=drop, rename=rename, keep=keep,
+                                    alt_table_name=alt_table_name)
 
     #res = engine.execute("CREATE SCHEMA IF NOT EXISTS " + schema)
-    res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + table_name + " CASCADE")
+    res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE")
     res = engine.execute(make_table_data["sql"])
 
     now = strftime("%H:%M:%S", gmtime())
     print("Beginning file import at %s." % now)
-    print("Importing data into %s.%s" % (schema, table_name))
+    print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, schema=schema, wrds_id=wrds_id,
-				drop=drop, fix_cr=fix_cr, fix_missing = fix_missing, obs=obs, rename=rename)
+				drop=drop, keep=keep, fix_cr=fix_cr, fix_missing = fix_missing, obs=obs, rename=rename)
 
-    res = wrds_process_to_pg(table_name, schema, engine, p)
+    res = wrds_process_to_pg(alt_table_name, schema, engine, p)
     now = strftime("%H:%M:%S", gmtime())
     print("Completed file import at %s." % now)
 
@@ -320,7 +340,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
         sql = r"""
             ALTER TABLE "%s"."%s"
             ALTER %s TYPE timestamp
-            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{4}):', '\1 ' )::timestamp""" % (schema, table_name, var, var)
+            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{4}):', '\1 ' )::timestamp""" % (schema, alt_table_name, var, var)
         engine.execute(sql)
 
     return res
@@ -329,7 +349,7 @@ def wrds_process_to_pg(table_name, schema, engine, p):
     # The first line has the variable names ...
     
     var_names = p.readline().rstrip().lower().split(sep=",")
-
+    
     # ... the rest is the data
     copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
     copy_cmd += " FROM STDIN CSV ENCODING 'latin1'"
@@ -348,8 +368,12 @@ def wrds_process_to_pg(table_name, schema, engine, p):
     return True
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
-        wrds_id=os.getenv("WRDS_ID"), fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", 
-        obs="", rename=""):
+        wrds_id=os.getenv("WRDS_ID"), fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
+        obs="", rename="", alt_table_name=None):
+          
+    if not alt_table_name:
+        alt_table_name = table_name
+          
     if not engine:
         if not (host and dbname):
             print("Error: Missing connection variables. Please specify engine or (host, dbname).")
@@ -358,7 +382,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
             engine = create_engine("postgresql://" + host + "/" + dbname) 
     if wrds_id:
         # 1. Get comments from PostgreSQL database
-        comment = get_table_comment(table_name, schema, engine)
+        comment = get_table_comment(alt_table_name, schema, engine)
 
         # 2. Get modified date from WRDS
         modified = get_modified_str(table_name, schema, wrds_id)
@@ -367,7 +391,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         modified = comment
         # 3. If updated table available, get from WRDS
     if modified == comment and not force and not fpath:
-        print(schema + "." + table_name + " already up to date")
+        print(schema + "." + alt_table_name + " already up to date")
         return False
     elif modified == "":
         print("WRDS flaked out!")
@@ -382,14 +406,21 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
             print("Getting from WRDS.\n")
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, wrds_id=wrds_id,
                 fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
-                drop=drop, obs=obs, rename=rename)
-        set_table_comment(table_name, schema, modified, engine)
+                drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name)
+        set_table_comment(alt_table_name, schema, modified, engine)
+        
+        if not role_exists(engine, schema):
+            create_role(engine, schema)
+        
         sql = r"""
-            ALTER TABLE "%s"."%s" OWNER TO %s""" % (schema, table_name, schema)
+            ALTER TABLE "%s"."%s" OWNER TO %s""" % (schema, alt_table_name, schema)
         engine.execute(sql)
 
+        if not role_exists(engine, "%s_access" % schema):
+            create_role(engine, "%s_access" % schema)
+            
         sql = r"""
-            GRANT SELECT ON "%s"."%s"  TO %s_access""" % (schema, table_name, schema)
+            GRANT SELECT ON "%s"."%s"  TO %s_access""" % (schema, alt_table_name, schema)
         engine.execute(sql)
 
         return True
@@ -401,3 +432,23 @@ def run_file_sql(file, engine):
     res = engine.execute(sql)
     res.close()
 
+def make_engine(host=None, dbname=None, wrds_id=None):
+    if not dbname:
+      dbname = getenv("PGDATABASE")
+    if not host:
+      host = getenv("PGHOST", "localhost")
+    if not wrds_id:
+      wrds_id = getenv("WRDS_ID")
+    
+    engine = create_engine("postgresql://" + host + "/" + dbname)
+    return engine
+  
+def role_exists(engine, role):
+    res = engine.execute("SELECT COUNT(*) FROM pg_roles WHERE rolname='%s'" % role)
+    rs = [r[0] for r in res]
+    
+    return rs[0] > 0
+
+def create_role(engine, role):
+    res = engine.execute("CREATE ROLE %s" % role)
+    return True
