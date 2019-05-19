@@ -2,6 +2,7 @@ import setuptools
 
 with open("README.md", "r") as f:
     long_description = f.read()
+    print(long_description)
 
 setuptools.setup(
     name="wrds2pg",
