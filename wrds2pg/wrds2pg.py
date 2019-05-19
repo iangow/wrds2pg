@@ -256,9 +256,9 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
-def wrds_to_pandas(table_name, schema, wrds_id, rename=""):
+def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None):
 
-    p = get_wrds_process(table_name, schema, wrds_id, rename=rename)
+    p = get_wrds_process(table_name, schema, wrds_id, rename=rename, obs=obs)
     df = pd.read_csv(StringIO(p.read().decode('latin1')))
     df.columns = map(str.lower, df.columns)
     p.close()
