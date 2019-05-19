@@ -9,6 +9,9 @@ from os import getenv
 client = paramiko.SSHClient()
 wrds_id = getenv("WRDS_ID")
 
+import warnings
+warnings.filterwarnings(action='ignore',module='.*paramiko.*')
+
 def get_process(sas_code, wrds_id=None, fpath=None):
 
     if wrds_id:
@@ -383,7 +386,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
     if wrds_id:
         # 1. Get comments from PostgreSQL database
         comment = get_table_comment(alt_table_name, schema, engine)
-
+        
         # 2. Get modified date from WRDS
         modified = get_modified_str(table_name, schema, wrds_id)
     else:
