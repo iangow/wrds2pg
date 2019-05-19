@@ -140,7 +140,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         keep_str = ""
 
     sas_code = sas_template % (libname_stmt, schema, table_name, drop_str, keep_str, rename_str)
-    # print(sas_code)
+    print(sas_code)
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
     df['postgres_type'] = df.apply(code_row, axis=1)
@@ -241,6 +241,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             run;"""
         sas_code = sas_template % (libname_stmt, schema, table_name, schema, sas_table, dsf_fix,
                                    fix_cr_code, fund_names_fix, schema, table_name)
+                                   
     else:
 
         sas_template = """
@@ -252,6 +253,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 
         sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
 
+    print(sas_code)
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
@@ -353,7 +355,6 @@ def wrds_process_to_pg(table_name, schema, engine, p):
     # ... the rest is the data
     copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
     copy_cmd += " FROM STDIN CSV ENCODING 'latin1'"
-
     
     connection = engine.raw_connection()
     try:
