@@ -1,7 +1,0 @@
-README.md
-setup.py
-wrds2pg.egg-info/PKG-INFO
-wrds2pg.egg-info/SOURCES.txt
-wrds2pg.egg-info/dependency_links.txt
-wrds2pg.egg-info/requires.txt
-wrds2pg.egg-info/top_level.txt
