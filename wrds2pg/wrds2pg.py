@@ -111,7 +111,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         %s
 
         * Use PROC CONTENTS to extract the information desired.;
-        proc contents data=%s.%s(drop=%s keep=%s obs=1 %s) out=schema noprint;
+        proc contents data=%s.%s(%s %s obs=1 %s) out=schema noprint;
         run;
 
         proc sort data=schema;
@@ -125,12 +125,12 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
     """
 
     if rename != '':
-        rename_str = "rename=(" + rename + ")"
+        rename_str = "rename=(" + rename + ") "
     else:
         rename_str = ""
 
     if drop != '':
-        drop_str = "drop=" + drop
+        drop_str = "drop=" + drop 
     else:
         drop_str = ""
         
@@ -140,7 +140,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         keep_str = ""
 
     sas_code = sas_template % (libname_stmt, schema, table_name, drop_str, keep_str, rename_str)
-    print(sas_code)
+    
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
     df['postgres_type'] = df.apply(code_row, axis=1)
@@ -192,8 +192,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
         else:
             obs_str = ""
 
-        drop_str = "drop=" + drop
-        keep_str = "keep=" + keep
+        drop_str = "drop=" + drop + " "
+        keep_str = "keep=" + keep + " "
         
         if keep:
             print(keep_str)
@@ -253,7 +253,6 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 
         sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
 
-    print(sas_code)
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
