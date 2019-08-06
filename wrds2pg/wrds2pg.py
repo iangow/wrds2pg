@@ -396,7 +396,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
     if modified == comment and not force and not fpath:
         print(schema + "." + alt_table_name + " already up to date")
         return False
-    elif modified == "":
+    elif modified == "" and not force:
         print("WRDS flaked out!")
         return False
     else:
