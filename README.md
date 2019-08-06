@@ -95,7 +95,7 @@ wrds_update(table="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 This software is also available from PyPI. To install it from Github:
 
 ```
-sudo pip3 install git+https://github.com/iangow/wrds2pg.git
+sudo -H pip3 install git+https://github.com/iangow/wrds2pg --upgrade
 ```
 
 To install it from [PyPI](https://pypi.org/project/wrds2pg/):
