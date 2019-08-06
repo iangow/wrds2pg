@@ -20,7 +20,7 @@ def get_process(sas_code, wrds_id=None, fpath=None):
         client.load_system_host_keys()
         client.connect('wrds-cloud.wharton.upenn.edu',
                        username=wrds_id, compress=True)
-        stdin, stdout, stderr = client.exec_command("qsas -stdio -noterminal")
+        stdin, stdout, stderr = client.exec_command("qsas -stdio -noterminal | iconv -f LATIN1 -t UTF8")
         stdin.write(sas_code)
         stdin.close()
 
@@ -91,7 +91,7 @@ def sas_to_pandas(sas_code, wrds_id, fpath):
     p = get_process(sas_code, wrds_id, fpath)
 
     if wrds_id:
-        df = pd.read_csv(StringIO(p.read().decode('latin1')))
+        df = pd.read_csv(StringIO(p.read().decode('utf-8')))
     else:
         df = pd.read_csv(StringIO(p.read()))
     df.columns = map(str.lower, df.columns)
@@ -262,7 +262,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None):
 
     p = get_wrds_process(table_name, schema, wrds_id, rename=rename, obs=obs)
-    df = pd.read_csv(StringIO(p.read().decode('latin1')))
+    df = pd.read_csv(StringIO(p.read().decode('utf-8')))
     df.columns = map(str.lower, df.columns)
     p.close()
 
@@ -356,7 +356,7 @@ def wrds_process_to_pg(table_name, schema, engine, p):
     
     # ... the rest is the data
     copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
-    copy_cmd += " FROM STDIN CSV ENCODING 'latin1'"
+    copy_cmd += " FROM STDIN CSV ENCODING 'utf-8'"
     
     connection = engine.raw_connection()
     try:
