@@ -78,43 +78,32 @@ Here are some examples.
 
 If you are at the home directory of this git repo, you can import and use the software as shown below.
 
-```py
-from wrds2pg import wrds_update
-
-# 1. Download crsp.mcti from wrds and upload to pg as crps.mcti
-# Simplest version
-wrds_update(table="mcti", schema="crsp")
-# Tailor table to your needs
-wrds_update(table="mcti", schema="crsp", host=your_pghost, dbname=your_pg_database, fix_missing=True, 
-	fix_cr=True, drop="b30ret b30ind", obs=10, rename="caldt=calendar_date", force=True)
-
-# 2. Upload test.sas7dbat to pg as crsp.mcti
-wrds_update(table="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
-```
-
-This software is also available from PyPI. To install it from Github:
+To install it from Github:
 
 ```
 sudo -H pip3 install git+https://github.com/iangow/wrds2pg --upgrade
 ```
 
-To install it from [PyPI](https://pypi.org/project/wrds2pg/):
+This software is also available from PyPI. To install it from [PyPI](https://pypi.org/project/wrds2pg/):
 ```
 pip3 install wrds2pg
 ```
 Examples of using this library:
+```sh
+source ~/.profile
+```
 ```py
 from wrds2pg import wrds2pg
 
 # 1. Download crsp.mcti from wrds and upload to pg as crps.mcti
 # Simplest version
-wrds2pg.wrds_update(table="mcti", schema="crsp")
+wrds2pg.wrds_update(table_name="mcti", schema="crsp")
 # Tailor table to your needs
-wrds2pg.wrds_update(table="mcti", schema="crsp", host=your_pghost, dbname=your_pg_database, fix_missing=True, 
+wrds2pg.wrds_update(table_name="mcti", schema="crsp", host=your_pghost, dbname=your_pg_database, fix_missing=True, 
 	fix_cr=True, drop="b30ret b30ind", obs=10, rename="caldt=calendar_date", force=True)
 
 # 2. Upload test.sas7dbat to pg as crsp.mcti
-wrds2pg.wrds_update(table="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
+wrds2pg.wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 ```
 
 
