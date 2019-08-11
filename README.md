@@ -1,4 +1,4 @@
-## WRDS to PG Migration
+# WRDS (or SAS) to PostgreSQL
 This software has two functions:
 - Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and feeds them to a PostgreSQL database. (Requires access to WRDS and to the data in question.)
 - Import a SAS file (`*.sas7dbat`) into a PostgreSQL database.
@@ -20,10 +20,10 @@ cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/a
 ```
 Use an empty passphrase in setting up the key so that the scripts can run without user intervention.
 
-### 4. PostgreSQL
+### 3. PostgreSQL
 You should have a PostgreSQL database to store the data.
 
-### 5. Environment variables
+### 4. Environment variables
 
 Environment variables that the code can use include:
 
@@ -101,4 +101,5 @@ wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 
 ### Report Bugs
 Author: Ian Gow, <iandgow@gmail.com>
+
 Contributor: Jingyu Zhang, <jingyu.zhang@chicagobooth.edu>
