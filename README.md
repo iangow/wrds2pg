@@ -24,8 +24,8 @@ Use an empty passphrase in setting up the key so that the scripts can run withou
 You should have a PostgreSQL database to store the data. There are also some data dependencies in that some scripts assume the existence of other data in the database. Also, I assume the existence of a role `wrds` (SQL `CREATE ROLE wrds` works to add this if it is absent).
 
 ### 5. Environment variables
-I am migrating the scripts, etc., from using hard-coded values (e.g., my WRDS ID `iangow`) to using environment variales. 
-Environment variables that I use include:
+
+Environment variables that the code can use include:
 
 - `PGDATABASE`: The name of the PostgreSQL database you use.
 - `PGUSER`: Your username on the PostgreSQL database.
@@ -47,31 +47,24 @@ export PGUSER="igow"
 Set `WRDS_ID`  using either `wrds_id=your_wrds_id` in the function call or the environment variable `WRDS_ID`.
 
 ### 2. PG Settings
-If you have set `PGHOST`, `PGDATABASE`, `PGUSER` as environment variables, the software can grep them. Otherwise, users are expected to specify them when using `wrds_udpate()`. Default `PGPORT` is`5432`.
-Again, if you follow the instructions above closely, you don't need to do anything.
+The software will use the environment variables `PGHOST`, `PGDATABASE`, and `PGUSER` if you If you have set them. Otherwise, you need to provide values as arguments to `wrds_udpate()`. Default `PGPORT` is`5432`.
 
-Two arguments `table` and `schema` are required.
+Two arguments `table_name` and `schema` are required.
 
 ### 3. Table Settings
 To tailor tables, specify the following variables:
 
-`fix_missing`: set to `True` to fix missing values. Default value is `False`. 
-
-`fix_cr`: set to `True` to fix characters. Default value is `False`.
-
-`drop`: add column names to be dropped.eg.`drop="id name"` will drop column `id` and `name`.
-
-`obs`: add maxium number of observations. eg.`obs=10` will export the top 10 rows from the table.
-
-`rename`: rename columns. eg.`rename="fee=mngt_fee"` rename `fee` to `mngt_fee`.
-
-`force`: set to `True` to force update. Default value is `False`.
+- `fix_missing`: set to `True` to fix missing values. Default value is `False`. 
+- `fix_cr`: set to `True` to fix characters. Default value is `False`.
+- `drop`: add column names to be dropped (e.g., `drop="id name"` will drop columns `id` and `name`).
+- `obs`: add maxium number of observations (e.g., `obs=10` will import the first 10 rows from the table on WRDS).
+- `rename`: rename columns (e.g., `rename="fee=mngt_fee"` renames `fee` to `mngt_fee`).
+- `force`: set to `True` to force update. Default value is `False`.
 
 ## Importing SAS data into PostgreSQL
 The software can also upload SAS file directly to PostgreSQL. 
 You need to have local SAS in order to use this function.
-
-Use `fpath` to specify file path.
+Use `fpath` to specify the path to the file to be imported
 
 ### Examples
 Here are some examples.
