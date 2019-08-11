@@ -43,18 +43,18 @@ export PGUSER="igow"
 
 ## Using the function `wrds_update`.
 
+Two arguments `table_name` and `schema` are required.
+
 ### 1. WRDS Settings
 Set `WRDS_ID`  using either `wrds_id=your_wrds_id` in the function call or the environment variable `WRDS_ID`.
 
 ### 2. PG Settings
 The software will use the environment variables `PGHOST`, `PGDATABASE`, and `PGUSER` if you If you have set them. Otherwise, you need to provide values as arguments to `wrds_udpate()`. Default `PGPORT` is`5432`.
 
-Two arguments `table_name` and `schema` are required.
-
 ### 3. Table Settings
-To tailor tables, specify the following variables:
+To tailor your request, specify the following arguments:
 
-- `fix_missing`: set to `True` to fix missing values. Default value is `False`. 
+- `fix_missing`: set to `True` to fix missing values. This addresses special missign values, which SAS's `PROC EXPORT` dumps as strings. Default value is `False`. 
 - `fix_cr`: set to `True` to fix characters. Default value is `False`.
 - `drop`: add column names to be dropped (e.g., `drop="id name"` will drop columns `id` and `name`).
 - `obs`: add maxium number of observations (e.g., `obs=10` will import the first 10 rows from the table on WRDS).
@@ -81,24 +81,22 @@ This software is also available from PyPI. To install it from [PyPI](https://pyp
 ```
 pip3 install wrds2pg
 ```
-Examples of using this library:
-```sh
-source ~/.profile
-```
+Example usage:
 ```py
-from wrds2pg import wrds2pg
+from wrds2pg.wrds2pg import wrds_update
 
 # 1. Download crsp.mcti from wrds and upload to pg as crps.mcti
 # Simplest version
-wrds2pg.wrds_update(table_name="mcti", schema="crsp")
-# Tailor table to your needs
-wrds2pg.wrds_update(table_name="mcti", schema="crsp", host=your_pghost, 
+wrds_update(table_name="mcti", schema="crsp")
+
+# Tailored arguments 
+wrds_update(table_name="mcti", schema="crsp", host=your_pghost, 
 	dbname=your_pg_database, 
 	fix_missing=True, fix_cr=True, drop="b30ret b30ind", obs=10, 
 	rename="caldt=calendar_date", force=True)
 
 # 2. Upload test.sas7dbat to pg as crsp.mcti
-wrds2pg.wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
+wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 ```
 
 ### Report Bugs
