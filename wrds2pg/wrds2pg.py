@@ -215,13 +215,18 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
         else:
             fund_names_fix = ""
 
+        # Cut table name to no more than 32 characters
+        # (A SAS limitation)
+        new_table = "%s%s" % (schema, table_name)
+        new_table = new_table[0:min(len(new_table), 32)]
+        
         sas_template = """
             options nosource nonotes;
 
             %s
 
             * Fix missing values;
-            data %s%s;
+            data %s;
                 set %s.%s;
 
                 * dsf_fix;
@@ -240,10 +245,10 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             * fund_names_fix;
             %s
 
-            proc export data=%s%s outfile=stdout dbms=csv;
+            proc export data=%s outfile=stdout dbms=csv;
             run;"""
-        sas_code = sas_template % (libname_stmt, schema, table_name, schema, sas_table, dsf_fix,
-                                   fix_cr_code, fund_names_fix, schema, table_name)
+        sas_code = sas_template % (libname_stmt, new_table, schema, sas_table, dsf_fix,
+                                   fix_cr_code, fund_names_fix, new_table)
                                    
     else:
 
