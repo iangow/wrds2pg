@@ -1,15 +1,15 @@
 ## WRDS to PG Migration
 This software has two functions:
-- Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and uploads to PG. 
-- Upload sas file (`*.sas7dbat`) to PG.
+- Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and feeds them to a PostgreSQL database. (Requires access to WRDS and to the data in question.)
+- Import a SAS file (`*.sas7dbat`) into a PostgreSQL database.
 
-The code will only work if you have access to WRDS and to the data in question.
 ## Requirements
 
-### 2. Python
-The software uses Python 3 and depends on Pandas, SQLAlchemy and Paramiko. In addition, the Python scripts generally interact with PostgreSQL using SQLAlchemy and the [Psycopg](http://initd.org/psycopg/) library.
+### 1. Python
+The software uses Python 3 and depends on Pandas, SQLAlchemy and Paramiko. In addition, the Python scripts generally interact with PostgreSQL using SQLAlchemy and the [Psycopg](http://initd.org/psycopg/) library. 
+These dependencies are installed when you use Pip (see instructions below).
 
-### 3. A WRDS ID
+### 2. A WRDS ID
 To use public-key authentication to access WRDS, follow hints taken from [here](https://debian-administration.org/article/152/Password-less_logins_with_OpenSSH) to set up a public key.
 Copy that key to the WRDS server from the terminal on my computer. 
 (Note that this code assumes you have a directory `.ssh` in your home directory. If not, log into WRDS via SSH, then type `mkdir ~/.ssh` to create this.) 
@@ -21,7 +21,7 @@ cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/a
 Use an empty passphrase in setting up the key so that the scripts can run without user intervention.
 
 ### 4. PostgreSQL
-You should have a PostgreSQL database to store the data. There are also some data dependencies in that some scripts assume the existence of other data in the database. Also, I assume the existence of a role `wrds` (SQL `CREATE ROLE wrds` works to add this if it is absent).
+You should have a PostgreSQL database to store the data.
 
 ### 5. Environment variables
 
