@@ -10,9 +10,12 @@ client = paramiko.SSHClient()
 wrds_id = getenv("WRDS_ID")
 
 import warnings
-warnings.filterwarnings(action='ignore',module='.*paramiko.*')
+warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
-def get_process(sas_code, wrds_id=None, fpath=None):
+def get_process(sas_code, wrds_id=None, fpath=None, encoding=None):
+  
+    if not encoding:
+        encoding = "LATIN1"
 
     if wrds_id:
         """Function runs SAS code on WRDS server and
@@ -20,7 +23,8 @@ def get_process(sas_code, wrds_id=None, fpath=None):
         client.load_system_host_keys()
         client.connect('wrds-cloud.wharton.upenn.edu',
                        username=wrds_id, compress=True)
-        stdin, stdout, stderr = client.exec_command("qsas -stdio -noterminal | iconv -f LATIN1 -t UTF8")
+        command = "qsas -stdio -noterminal | iconv -f %s -t UTF8" % encoding
+        stdin, stdout, stderr = client.exec_command(command)
         stdin.write(sas_code)
         stdin.close()
 
@@ -84,11 +88,11 @@ def get_row_sql(row):
 
     return row['name'].lower() + ' ' + postgres_type
 
-def sas_to_pandas(sas_code, wrds_id, fpath):
+def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
 
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame."""
-    p = get_process(sas_code, wrds_id, fpath)
+    p = get_process(sas_code, wrds_id, fpath, encoding=encoding)
 
     if wrds_id:
         df = pd.read_csv(StringIO(p.read().decode('utf-8')))
@@ -161,7 +165,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         return df
 
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
-                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename=""):
+                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename="",
+                     encoding=None):
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
@@ -260,8 +265,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             run;"""
 
         sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
-
-    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
+    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath, encoding=encoding)
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None):
@@ -321,7 +325,7 @@ def set_table_comment(table_name, schema, comment, engine):
 
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, fix_missing=False, fix_cr=False, drop="", obs="", rename="", keep="",
-               alt_table_name = None):
+               alt_table_name = None, encoding=None):
 
     if not alt_table_name:
         alt_table_name = table_name
@@ -338,7 +342,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print("Beginning file import at %s." % now)
     print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, schema=schema, wrds_id=wrds_id,
-				drop=drop, keep=keep, fix_cr=fix_cr, fix_missing = fix_missing, obs=obs, rename=rename)
+				                 drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
+				                 obs=obs, rename=rename, encoding=encoding)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p)
     now = strftime("%H:%M:%S", gmtime())
@@ -377,7 +382,7 @@ def wrds_process_to_pg(table_name, schema, engine, p):
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
         wrds_id=os.getenv("WRDS_ID"), fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
-        obs="", rename="", alt_table_name=None):
+        obs="", rename="", alt_table_name=None, encoding=None):
           
     if not alt_table_name:
         alt_table_name = table_name
@@ -414,7 +419,8 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
             print("Getting from WRDS.\n")
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, wrds_id=wrds_id,
                 fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
-                drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name)
+                drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name,
+                encoding=encoding)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if not role_exists(engine, schema):
