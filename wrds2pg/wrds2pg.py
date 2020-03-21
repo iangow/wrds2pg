@@ -12,10 +12,7 @@ wrds_id = getenv("WRDS_ID")
 import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
-def get_process(sas_code, wrds_id=None, fpath=None, encoding=None):
-  
-    if not encoding:
-        encoding = "LATIN1"
+def get_process(sas_code, wrds_id=None, fpath=None):
 
     if wrds_id:
         """Function runs SAS code on WRDS server and
@@ -23,7 +20,7 @@ def get_process(sas_code, wrds_id=None, fpath=None, encoding=None):
         client.load_system_host_keys()
         client.connect('wrds-cloud.wharton.upenn.edu',
                        username=wrds_id, compress=True)
-        command = "qsas -stdio -noterminal | iconv -f %s -t UTF8" % encoding
+        command = "qsas -stdio -noterminal"
         stdin, stdout, stderr = client.exec_command(command)
         stdin.write(sas_code)
         stdin.close()
@@ -92,10 +89,13 @@ def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
 
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame."""
-    p = get_process(sas_code, wrds_id, fpath, encoding=encoding)
+    if not encoding:
+        encoding = "latin-1"
+    
+    p = get_process(sas_code, wrds_id, fpath)
 
     if wrds_id:
-        df = pd.read_csv(StringIO(p.read().decode('utf-8')))
+        df = pd.read_csv(StringIO(p.read().decode(encoding)))
     else:
         df = pd.read_csv(StringIO(p.read()))
     df.columns = map(str.lower, df.columns)
@@ -165,8 +165,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         return df
 
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
-                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename="",
-                     encoding=None):
+                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename=""):
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
@@ -265,30 +264,36 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             run;"""
 
         sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
-    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath, encoding=encoding)
+    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
-def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None):
+def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None, encoding=None):
+
+    if not encoding:
+        encoding = "latin-1"
 
     p = get_wrds_process(table_name, schema, wrds_id, rename=rename, obs=obs)
-    df = pd.read_csv(StringIO(p.read().decode('utf-8')))
+    df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
 
     return(df)
 
 def get_modified_str(table_name, schema, wrds_id):
+    
     sas_code = "proc contents data=" + schema + "." + table_name + ";"
+
     contents = get_process(sas_code, wrds_id).readlines()
     modified = ""
 
     next_row = False
     for line in contents:
+        line = line.encode('latin-1').decode('utf-8')
         if next_row:
             line = re.sub(r"^\s+(.*)\s+$", r"\1", line)
             line = re.sub(r"\s+$", "", line)
             if not re.findall(r"Protection", line):
-              modified += " " + line.rstrip()
+                modified += " " + line.rstrip()
             next_row = False
 
         if re.match(r"Last Modified", line):
@@ -343,9 +348,9 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, schema=schema, wrds_id=wrds_id,
 				                 drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
-				                 obs=obs, rename=rename, encoding=encoding)
+				                 obs=obs, rename=rename)
 
-    res = wrds_process_to_pg(alt_table_name, schema, engine, p)
+    res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
     now = strftime("%H:%M:%S", gmtime())
     print("Completed file import at %s." % now)
 
@@ -359,14 +364,17 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
 
     return res
 
-def wrds_process_to_pg(table_name, schema, engine, p):
+def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
     # The first line has the variable names ...
+    
+    if not encoding:
+        encoding = "LATIN1"
     
     var_names = p.readline().rstrip().lower().split(sep=",")
     
     # ... the rest is the data
     copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
-    copy_cmd += " FROM STDIN CSV ENCODING 'utf-8'"
+    copy_cmd += " FROM STDIN CSV ENCODING '%s'" % encoding
     
     connection = engine.raw_connection()
     try:
@@ -466,3 +474,4 @@ def role_exists(engine, role):
 def create_role(engine, role):
     res = engine.execute("CREATE ROLE %s" % role)
     return True
+
