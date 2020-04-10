@@ -4,6 +4,8 @@ from io import StringIO
 import re, subprocess, os, paramiko
 from time import gmtime, strftime
 from sqlalchemy import create_engine
+
+from sqlalchemy.engine import reflection
 from os import getenv
 
 client = paramiko.SSHClient()
@@ -312,6 +314,11 @@ def get_table_comment(table_name, schema, engine):
     else:
         return ""
 
+def create_role(role, engine):
+    user_exists = engine.execute("SELECT 1 FROM pg_roles WHERE rolname='%s'" % (role))
+    if not user_exists.fetchone():
+        engine.execute("CREATE ROLE %s" % (role))
+        
 def set_table_comment(table_name, schema, comment, engine):
 
     connection = engine.connect()
@@ -339,8 +346,15 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                     fpath=fpath, schema=schema, drop=drop, rename=rename, keep=keep,
                                     alt_table_name=alt_table_name)
 
-    #res = engine.execute("CREATE SCHEMA IF NOT EXISTS " + schema)
     res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE")
+  
+    # Create schema (and associated role) if necessary
+    insp = reflection.Inspector.from_engine(engine)
+    if not schema in insp.get_schema_names():
+        res = engine.execute("CREATE SCHEMA " + schema)
+        create_role(schema, engine)
+        res = engine.execute("ALTER SCHEMA " + schema + " OWNER TO " + schema)
+    
     res = engine.execute(make_table_data["sql"])
 
     now = strftime("%H:%M:%S", gmtime())
