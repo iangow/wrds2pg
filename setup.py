@@ -12,7 +12,7 @@ setuptools.setup(
     description="Import WRDS tables or SAS data into PostgreSQL.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/iangow-public/wrds_pg/",
+    url="https://github.com/iangow-public/wrds2pg/",
     packages=setuptools.find_packages(),
     install_requires=['pandas', 'sqlalchemy', 'paramiko'],
     python_requires=">=3",
