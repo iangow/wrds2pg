@@ -314,7 +314,7 @@ def get_table_comment(table_name, schema, engine):
     else:
         return ""
 
-def create_role(role, engine):
+def create_role(engine, role):
     user_exists = engine.execute("SELECT 1 FROM pg_roles WHERE rolname='%s'" % (role))
     if not user_exists.fetchone():
         engine.execute("CREATE ROLE %s" % (role))
@@ -352,7 +352,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     insp = reflection.Inspector.from_engine(engine)
     if not schema in insp.get_schema_names():
         res = engine.execute("CREATE SCHEMA " + schema)
-        create_role(schema, engine)
+        create_role(engine, schema)
         res = engine.execute("ALTER SCHEMA " + schema + " OWNER TO " + schema)
     
     res = engine.execute(make_table_data["sql"])
