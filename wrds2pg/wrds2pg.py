@@ -479,7 +479,7 @@ def make_engine(host=None, dbname=None, wrds_id=None):
     engine = create_engine("postgresql://" + host + "/" + dbname)
     return engine
   
-def role_exists(role, engine):
+def role_exists(engine, role):
     res = engine.execute("SELECT COUNT(*) FROM pg_roles WHERE rolname='%s'" % role)
     rs = [r[0] for r in res]
     
