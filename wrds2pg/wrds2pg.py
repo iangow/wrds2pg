@@ -285,12 +285,12 @@ def get_modified_str(table_name, schema, wrds_id):
     
     sas_code = "proc contents data=" + schema + "." + table_name + ";"
 
-    contents = get_process(sas_code, wrds_id).decode('latin-1').readlines()
+    contents = get_process(sas_code, wrds_id).readlines()
     modified = ""
 
     next_row = False
     for line in contents:
-        # line = line.encode('cp1252').decode('utf-8')
+        line = line.encode('cp1252').decode('utf-8')
         if next_row:
             line = re.sub(r"^\s+(.*)\s+$", r"\1", line)
             line = re.sub(r"\s+$", "", line)
