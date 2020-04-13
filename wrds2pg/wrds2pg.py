@@ -283,9 +283,13 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None, encoding=No
 
 def get_modified_str(table_name, schema, wrds_id):
     
+    if not encoding:
+        encoding = "latin-1"
+
     sas_code = "proc contents data=" + schema + "." + table_name + ";"
 
-    contents = get_process(sas_code, wrds_id).readlines()
+    p = get_process(sas_code, wrds_id)
+    contents = StringIO(p.read().decode(encoding)).readlines()
     modified = ""
 
     next_row = False
