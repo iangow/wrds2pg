@@ -281,10 +281,10 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None, encoding=No
 
     return(df)
 
-def get_modified_str(table_name, schema, wrds_id):
+def get_modified_str(table_name, schema, wrds_id, encoding=None):
     
-    # if not encoding:
-    encoding = "latin-1"
+    if not encoding:
+        encoding = "latin-1"
 
     sas_code = "proc contents data=" + schema + "." + table_name + ";"
 
@@ -424,7 +424,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         comment = get_table_comment(alt_table_name, schema, engine)
         
         # 2. Get modified date from WRDS
-        modified = get_modified_str(table_name, schema, wrds_id)
+        modified = get_modified_str(table_name, schema, wrds_id, encoding=encoding)
     else:
         comment = 'Updated on ' + strftime("%Y-%m-%d %H:%M:%S", gmtime())
         modified = comment
