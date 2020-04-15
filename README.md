@@ -48,10 +48,10 @@ Two arguments `table_name` and `schema` are required.
 ### 1. WRDS Settings
 Set `WRDS_ID`  using either `wrds_id=your_wrds_id` in the function call or the environment variable `WRDS_ID`.
 
-### 2. PG Settings
+### 2. Environment variables
 The software will use the environment variables `PGHOST`, `PGDATABASE`, and `PGUSER` if you If you have set them. Otherwise, you need to provide values as arguments to `wrds_udpate()`. Default `PGPORT` is`5432`.
 
-### 3. Table Settings
+### 3. Table settings
 To tailor your request, specify the following arguments:
 
 - `fix_missing`: set to `True` to fix missing values. This addresses special missign values, which SAS's `PROC EXPORT` dumps as strings. Default value is `False`. 
@@ -83,7 +83,7 @@ pip3 install wrds2pg
 ```
 Example usage:
 ```py
-from wrds2pg.wrds2pg import wrds_update
+from wrds2pg import wrds_update
 
 # 1. Download crsp.mcti from wrds and upload to pg as crps.mcti
 # Simplest version
