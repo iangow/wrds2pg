@@ -2,3 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+wrds2pg.egg-info
+dist
+build
