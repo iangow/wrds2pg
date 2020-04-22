@@ -6,13 +6,13 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="0.1.17",
+    version="0.1.18",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
     description="Import WRDS tables or SAS data into PostgreSQL.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/iangow-public/wrds2pg/",
+    url="https://github.com/iangow/wrds2pg/",
     packages=setuptools.find_packages(),
     install_requires=['pandas', 'sqlalchemy', 'paramiko'],
     python_requires=">=3",
