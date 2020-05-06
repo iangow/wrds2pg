@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="0.1.19",
+    version="0.1.20",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
     description="Import WRDS tables or SAS data into PostgreSQL.",
@@ -14,7 +14,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/iangow/wrds2pg/",
     packages=setuptools.find_packages(),
-    install_requires=['pandas', 'sqlalchemy', 'paramiko'],
+    install_requires=['pandas', 'sqlalchemy', 'paramiko', 'psycopg2'],
     python_requires=">=3",
     classifiers=[
         "Programming Language :: Python :: 3",
