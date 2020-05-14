@@ -16,6 +16,9 @@ warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
 def get_process(sas_code, wrds_id=None, fpath=None):
 
+    if client:
+        client.close()
+        
     if wrds_id:
         """Function runs SAS code on WRDS server and
         returns result as pipe on stdout."""
