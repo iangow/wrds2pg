@@ -108,7 +108,8 @@ def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
 
     return(df)
 
-def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep="", rename="", return_sql=True, \
+def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
+                  drop="", keep="", rename="", return_sql=True, \
                   alt_table_name=None):
     if fpath:
         libname_stmt = "libname %s '%s';" % (schema, fpath)
@@ -131,7 +132,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         run;
 
         * Now dump it out to a CSV file;
-        proc export data=schema(keep=name format formatl formatd length type)
+        proc export data=schema(keep=name format formatl 
+                                      formatd length type)
             outfile=stdout dbms=csv;
         run;
     """
@@ -170,7 +172,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, drop="", keep=""
         return df
 
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
-                     drop="", keep="", fix_cr = False, fix_missing = False, obs="", rename=""):
+                     drop="", keep="", fix_cr = False, 
+                     fix_missing = False, obs="", rename=""):
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
@@ -211,7 +214,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             print(keep_str)
         
         if obs != '' or drop != '' or rename != '' or keep != '':
-            sas_table = table_name + "(" + drop_str + keep_str + obs_str + rename_str + ")"
+            sas_table = table_name + "(" + drop_str + keep_str + \
+                                           obs_str + rename_str + ")"
         else:
             sas_table = table_name
 
@@ -256,7 +260,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 
             proc export data=%s outfile=stdout dbms=csv;
             run;"""
-        sas_code = sas_template % (libname_stmt, new_table, schema, sas_table, dsf_fix,
+        sas_code = sas_template % (libname_stmt, new_table, 
+                                    schema, sas_table, dsf_fix,
                                    fix_cr_code, fund_names_fix, new_table)
                                    
     else:
@@ -272,7 +277,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
-def wrds_to_pandas(table_name, schema, wrds_id, rename="", obs=None, encoding=None):
+def wrds_to_pandas(table_name, schema, wrds_id, rename="", 
+                   obs=None, encoding=None):
 
     if not encoding:
         encoding = "latin-1"
