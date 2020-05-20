@@ -473,13 +473,31 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
 
         return True
 
+def process_sql(sql, engine):
+
+    connection = engine.raw_connection()
+
+    try:
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        print(cursor.statusmessage)
+
+        cursor.close()
+        connection.commit()
+    finally:
+        connection.close()
+
 def run_file_sql(file, engine):
     f = open(file, 'r')
     sql = f.read()
     print("Running SQL in %s" % file)
-    res = engine.execute(sql)
-    res.close()
-
+    
+    for i in sql.split(";"):
+        j = i.strip()
+        if j != "":
+            print("\nRunning SQL: %s;" % j)
+            process_sql(j, engine)
+            
 def make_engine(host=None, dbname=None, wrds_id=None):
     if not dbname:
       dbname = getenv("PGDATABASE")
