@@ -366,7 +366,9 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
         res = engine.execute("CREATE SCHEMA " + schema)
         create_role(engine, schema)
         res = engine.execute("ALTER SCHEMA " + schema + " OWNER TO " + schema)
-    
+        if not role_exists(engine, "%s_access" % schema):
+            create_role(engine, "%s_access" % schema)
+        res = engine.execute("GRANT USAGE ON SCHEMA " + schema + " TO " + schema + "_access")
     res = engine.execute(make_table_data["sql"])
 
     now = strftime("%H:%M:%S", gmtime())
