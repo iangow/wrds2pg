@@ -521,3 +521,19 @@ def create_role(engine, role):
     res = engine.execute("CREATE ROLE %s" % role)
     return True
 
+def get_wrds_tables(schema, wrds_id=None):
+
+    from sqlalchemy import MetaData
+
+    if not wrds_id:
+      wrds_id = getenv("WRDS_ID")
+
+    wrds_engine = create_engine("postgresql://%s@wrds-pgdata.wharton.upenn.edu:9737/wrds" % wrds_id,
+                                connect_args = {'sslmode':'require'})
+
+    metadata = MetaData(wrds_engine, schema=schema)
+    metadata.reflect(schema=schema, autoload=True)
+  
+    table_list = [key.name for key in metadata.tables.values()]
+    wrds_engine.dispose()
+    return table_list
