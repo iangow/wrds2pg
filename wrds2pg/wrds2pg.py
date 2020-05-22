@@ -88,7 +88,7 @@ def get_row_sql(row):
     if postgres_type == 'timestamp':
         postgres_type = 'text'
 
-    return row['name'].lower() + ' ' + postgres_type
+    return '"' + row['name'].lower() + '" ' + postgres_type
 
 def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
 
@@ -401,7 +401,7 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
     var_names = p.readline().rstrip().lower().split(sep=",")
     
     # ... the rest is the data
-    copy_cmd =  "COPY " + schema + "." + table_name + " (" + ", ".join(var_names) + ")"
+    copy_cmd =  "COPY " + schema + "." + table_name + ' ("' + '", "'.join(var_names) + '")'
     copy_cmd += " FROM STDIN CSV ENCODING '%s'" % encoding
     
     connection = engine.raw_connection()
