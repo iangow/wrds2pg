@@ -364,7 +364,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     insp = reflection.Inspector.from_engine(engine)
     if not schema in insp.get_schema_names():
         res = engine.execute("CREATE SCHEMA " + schema)
-        create_role(engine, schema)
+        if not role_exists(engine, schema):
+            create_role(engine, schema)
         res = engine.execute("ALTER SCHEMA " + schema + " OWNER TO " + schema)
         if not role_exists(engine, "%s_access" % schema):
             create_role(engine, "%s_access" % schema)
