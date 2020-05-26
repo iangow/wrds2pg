@@ -224,7 +224,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             print(keep_str)
         
         if obs != '' or drop != '' or rename != '' or keep != '':
-           sas_table = table_name + "(" + drop_str + keep_str + \
+            sas_table = table_name + "(" + drop_str + keep_str + \
                                            obs_str + rename_str + ")"
         else:
             sas_table = table_name
