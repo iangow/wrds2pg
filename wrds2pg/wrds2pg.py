@@ -157,17 +157,23 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
+    
+    # Make all variable names lower case, get
+    # inferred types, then set explicit types if given
+    # Identify the datetime fields. These need special handling.
+    df['name'] = df['name'].str.lower()
     df['postgres_type'] = df.apply(code_row, axis=1)
+    datetimes = df.loc[df['postgres_type']=="timestamp", "name"]
+    
     if col_types:
         for var in col_types.keys():
             df.loc[df.name == var, 'postgres_type'] = col_types[var]
-            
+        datetimes = [var for var in datetimes if var not in col_types.keys()]
+        
     make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + \
                       df.apply(get_row_sql, axis=1).str.cat(sep=", ") + ")"
 
-    # Identify the datetime fields. These need special handling.
-    datatimes = df.loc[df['postgres_type']=="timestamp", "name"]
-    datetime_cols = [field.lower() for field in datatimes]
+    datetime_cols = [field.lower() for field in datetimes]
 
     if return_sql:
         return {"sql":make_table_sql, "datetimes":datetime_cols}
@@ -218,7 +224,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             print(keep_str)
         
         if obs != '' or drop != '' or rename != '' or keep != '':
-            sas_table = table_name + "(" + drop_str + keep_str + \
+           sas_table = table_name + "(" + drop_str + keep_str + \
                                            obs_str + rename_str + ")"
         else:
             sas_table = table_name
@@ -282,12 +288,12 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename="", 
-                   obs=None, encoding=None):
+                   drop="", obs=None, encoding=None):
 
     if not encoding:
         encoding = "latin-1"
 
-    p = get_wrds_process(table_name, schema, wrds_id, rename=rename, obs=obs)
+    p = get_wrds_process(table_name, schema, wrds_id, drop=drop, rename=rename, obs=obs)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
