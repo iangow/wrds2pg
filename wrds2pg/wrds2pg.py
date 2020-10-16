@@ -386,8 +386,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print("Beginning file import at %s." % now)
     print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, schema=schema, wrds_id=wrds_id,
-				                 drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
-				                 obs=obs, rename=rename)
+                                 drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
+                                 obs=obs, rename=rename)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
     now = strftime("%H:%M:%S", gmtime())
@@ -513,11 +513,11 @@ def run_file_sql(file, engine):
             
 def make_engine(host=None, dbname=None, wrds_id=None):
     if not dbname:
-      dbname = getenv("PGDATABASE")
+        dbname = getenv("PGDATABASE")
     if not host:
-      host = getenv("PGHOST", "localhost")
+        host = getenv("PGHOST", "localhost")
     if not wrds_id:
-      wrds_id = getenv("WRDS_ID")
+        wrds_id = getenv("WRDS_ID")
     
     engine = create_engine("postgresql://" + host + "/" + dbname)
     return engine
@@ -537,7 +537,7 @@ def get_wrds_tables(schema, wrds_id=None):
     from sqlalchemy import MetaData
 
     if not wrds_id:
-      wrds_id = getenv("WRDS_ID")
+        wrds_id = getenv("WRDS_ID")
 
     wrds_engine = create_engine("postgresql://%s@wrds-pgdata.wharton.upenn.edu:9737/wrds" % wrds_id,
                                 connect_args = {'sslmode':'require'})
@@ -548,3 +548,4 @@ def get_wrds_tables(schema, wrds_id=None):
     table_list = [key.name for key in metadata.tables.values()]
     wrds_engine.dispose()
     return table_list
+
