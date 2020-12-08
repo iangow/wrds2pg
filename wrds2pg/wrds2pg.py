@@ -95,7 +95,7 @@ def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame."""
     if not encoding:
-        encoding = "latin-1"
+        encoding = "utf-8"
     
     p = get_process(sas_code, wrds_id, fpath)
 
@@ -291,7 +291,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
                    drop="", obs=None, encoding=None):
 
     if not encoding:
-        encoding = "latin-1"
+        encoding = "utf-8"
 
     p = get_wrds_process(table_name, schema, wrds_id, drop=drop, rename=rename, obs=obs)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
@@ -303,7 +303,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
 def get_modified_str(table_name, schema, wrds_id, encoding=None):
     
     if not encoding:
-        encoding = "latin-1"
+        encoding = "utf-8"
 
     sas_code = "proc contents data=" + schema + "." + table_name + ";"
 
