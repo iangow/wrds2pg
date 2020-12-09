@@ -407,7 +407,7 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
     # The first line has the variable names ...
     
     if not encoding:
-        encoding = "LATIN1"
+        encoding = "UTF8"
     
     var_names = p.readline().rstrip().lower().split(sep=",")
     
