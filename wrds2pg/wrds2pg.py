@@ -250,7 +250,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 
             * Fix missing values;
             data %s;
-                set %s.%s;
+                set %s.%s (encoding = 'utf-8');
 
                 * dsf_fix;
                 %s
