@@ -90,7 +90,7 @@ def get_row_sql(row):
 
     return '"' + row['name'].lower() + '" ' + postgres_type
 
-def sas_to_pandas(sas_code, wrds_id, fpath, encoding=None):
+def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
 
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame."""
@@ -250,7 +250,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
 
             * Fix missing values;
             data %s;
-                set %s.%s (encoding = 'utf-8');
+                set %s.%s; 
 
                 * dsf_fix;
                 %s
@@ -268,7 +268,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             * fund_names_fix;
             %s
 
-            proc export data=%s outfile=stdout dbms=csv;
+            proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
         sas_code = sas_template % (libname_stmt, new_table, 
                                     schema, sas_table, dsf_fix,
@@ -280,7 +280,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
             options nosource nonotes;
             %s
 
-            proc export data=%s.%s(%s) outfile=stdout dbms=csv;
+            proc export data=%s.%s(%s encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
 
         sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
@@ -293,7 +293,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
     if not encoding:
         encoding = "utf-8"
 
-    p = get_wrds_process(table_name, schema, wrds_id, drop=drop, rename=rename, obs=obs)
+    p = get_wrds_process(table_name, schema, wrds_id)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
@@ -548,4 +548,3 @@ def get_wrds_tables(schema, wrds_id=None):
     table_list = [key.name for key in metadata.tables.values()]
     wrds_engine.dispose()
     return table_list
-
