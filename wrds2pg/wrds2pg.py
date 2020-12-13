@@ -293,7 +293,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
     if not encoding:
         encoding = "utf-8"
 
-    p = get_wrds_process(table_name, schema, wrds_id)
+    p = get_wrds_process(table_name, schema, wrds_id, drop=drop, rename=rename, obs=obs)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
