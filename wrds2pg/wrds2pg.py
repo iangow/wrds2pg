@@ -305,7 +305,7 @@ def get_modified_str(table_name, schema, wrds_id, encoding=None):
     if not encoding:
         encoding = "utf-8"
 
-    sas_code = "proc contents data=" + schema + "." + table_name + ";"
+    sas_code = "proc contents data=" + schema + "." + table_name + "(encoding='wlatin1');"
 
     p = get_process(sas_code, wrds_id)
     contents = StringIO(p.read().decode(encoding)).readlines()
