@@ -24,7 +24,7 @@ def get_process(sas_code, wrds_id=None, fpath=None):
         returns result as pipe on stdout."""
         client.load_system_host_keys()
         client.connect('wrds-cloud.wharton.upenn.edu',
-                       username=wrds_id, compress=True)
+                       username=wrds_id, compress=False)
         command = "qsas -stdio -noterminal"
         stdin, stdout, stderr = client.exec_command(command)
         stdin.write(sas_code)
