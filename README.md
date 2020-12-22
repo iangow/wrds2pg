@@ -1,6 +1,6 @@
 # WRDS (or SAS) to PostgreSQL
 This software has two functions:
-- Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and feeds them to a PostgreSQL database. (Requires access to WRDS and to the data in question.)
+- Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and feed them to a PostgreSQL database. (Requires access to WRDS and to the data in question.)
 - Import a SAS file (`*.sas7dbat`) into a PostgreSQL database.
 
 ## Requirements
@@ -11,9 +11,9 @@ These dependencies are installed when you use Pip (see instructions below).
 
 ### 2. A WRDS ID
 To use public-key authentication to access WRDS, follow hints taken from [here](https://debian-administration.org/article/152/Password-less_logins_with_OpenSSH) to set up a public key.
-Copy that key to the WRDS server from the terminal on my computer. 
+Copy that key to the WRDS server from the terminal on your computer. 
 (Note that this code assumes you have a directory `.ssh` in your home directory. If not, log into WRDS via SSH, then type `mkdir ~/.ssh` to create this.) 
-Here's code to create the key and send it to WRDS (for me):
+Here's code (for me) to create the key and send it to WRDS:
 ```
 ssh-keygen -t rsa
 cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/authorized_keys"
@@ -99,7 +99,6 @@ wrds_update(table_name="mcti", schema="crsp", host=your_pghost,
 wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 ```
 
-### Report Bugs
+### Report bugs
 Author: Ian Gow, <iandgow@gmail.com>
-
 Contributor: Jingyu Zhang, <jingyu.zhang@chicagobooth.edu>
