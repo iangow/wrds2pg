@@ -431,7 +431,7 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
         wrds_id=os.getenv("WRDS_ID"), fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
-        obs="", rename="", alt_table_name=None, encoding=None, col_types=None):
+        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=False):
           
     if not alt_table_name:
         alt_table_name = table_name
@@ -469,7 +469,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, wrds_id=wrds_id,
                 fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
                 drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name,
-                encoding=encoding, col_types=col_types)
+                encoding=encoding, col_types=col_types, create_roles=create_roles)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
