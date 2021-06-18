@@ -359,7 +359,7 @@ def set_table_comment(table_name, schema, comment, engine):
 
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, fix_missing=False, fix_cr=False, drop="", obs="", rename="", keep="",
-               alt_table_name = None, encoding=None, col_types=None, create_roles=TRUE):
+               alt_table_name = None, encoding=None, col_types=None, create_roles=True):
 
     if not alt_table_name:
         alt_table_name = table_name
