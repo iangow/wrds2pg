@@ -443,7 +443,7 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
         wrds_id=os.getenv("WRDS_ID"), rpath=None, fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
-        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=False):
+        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True):
           
     if not alt_table_name:
         alt_table_name = table_name
