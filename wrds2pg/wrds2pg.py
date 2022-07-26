@@ -110,8 +110,12 @@ def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
     return(df)
 
 def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
-                  rpath = None, drop="", keep="", rename="", return_sql=True, \
-                  alt_table_name=None, col_types=None):
+                  rpath=None, drop="", keep="", rename="", return_sql=True, \
+                  alt_table_name=None, col_types=None, sas_schema=None):
+                      
+    if not sas_schema:
+        sas_schema = schema
+        
     if fpath:
         libname_stmt = "libname %s '%s';" % (schema, fpath)
         
@@ -157,7 +161,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
     else:
         keep_str = ""
 
-    sas_code = sas_template % (libname_stmt, schema, table_name, drop_str, keep_str, rename_str)
+    sas_code = sas_template % (libname_stmt, sas_schema, table_name, drop_str,
+                               keep_str, rename_str)
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
@@ -299,7 +304,10 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
     if not encoding:
         encoding = "utf-8"
 
-    p = get_wrds_process(table_name, schema, wrds_id, drop=drop, rename=rename, obs=obs)
+    if not sas_schema:
+        sas_schema = schema
+
+    p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, rename=rename, obs=obs)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
@@ -369,15 +377,20 @@ def set_table_comment(table_name, schema, comment, engine):
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
                drop="", obs="", rename="", keep="",
-               alt_table_name = None, encoding=None, col_types=None, create_roles=True):
+               alt_table_name = None, encoding=None, col_types=None, create_roles=True,
+               sas_schema=None):
 
     if not alt_table_name:
         alt_table_name = table_name
+    
+    if not sas_schema:
+        sas_schema = schema
         
     make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
                                     rpath=rpath, fpath=fpath, schema=schema, 
                                     drop=drop, rename=rename, keep=keep,
-                                    alt_table_name=alt_table_name, col_types=col_types)
+                                    alt_table_name=alt_table_name, col_types=col_types,
+                                    sas_schema=sas_schema)
 
     res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE")
   
@@ -399,7 +412,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print("Beginning file import at %s." % now)
     print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
-                                 schema=schema, wrds_id=wrds_id,
+                                 schema=sas_schema, wrds_id=wrds_id,
                                  drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
                                  obs=obs, rename=rename)
 
@@ -443,7 +456,8 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
         wrds_id=os.getenv("WRDS_ID"), rpath=None, fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
-        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True):
+        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True,
+        sas_schema=None):
           
     if not alt_table_name:
         alt_table_name = table_name
@@ -462,7 +476,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         comment = get_table_comment(alt_table_name, schema, engine)
         
         # 2. Get modified date from WRDS
-        modified = get_modified_str(table_name, schema, wrds_id, encoding=encoding,
+        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
                                     rpath=rpath)
     else:
         comment = 'Updated on ' + strftime("%Y-%m-%d %H:%M:%S", gmtime())
@@ -485,7 +499,8 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, wrds_id=wrds_id,
                 rpath=rpath, fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
                 drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name,
-                encoding=encoding, col_types=col_types, create_roles=create_roles)
+                encoding=encoding, col_types=col_types, create_roles=create_roles,
+                sas_schema=sas_schema)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
