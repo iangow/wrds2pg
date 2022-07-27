@@ -117,10 +117,10 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
         sas_schema = schema
         
     if fpath:
-        libname_stmt = "libname %s '%s';" % (schema, fpath)
+        libname_stmt = "libname %s '%s';" % (sas_schema, fpath)
         
     elif rpath:
-        libname_stmt = "libname %s '%s';" % (schema, rpath)
+        libname_stmt = "libname %s '%s';" % (sas_schema, rpath)
     else:
         libname_stmt = ""
 
@@ -459,6 +459,9 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True,
         sas_schema=None):
           
+    if not sas_schema:
+        sas_schema = schema
+        
     if not alt_table_name:
         alt_table_name = table_name
           
