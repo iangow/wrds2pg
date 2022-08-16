@@ -192,11 +192,13 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
 
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop="", keep="", fix_cr = False, 
-                     fix_missing = False, obs="", rename=""):
+                     fix_missing = False, obs="", rename="",
+                     encoding=None, sas_encoding=None):
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
             array _char _character_;
+            
             do over _char;
                 _char = compress(_char, , 'kw');
             end;"""
@@ -214,6 +216,9 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         rename_str = " rename=(" + rename + ")"
     else:
         rename_str = ""
+        
+    if not sas_encoding:
+        sas_encoding="wlatin1"
 
     if fix_missing or drop != '' or obs != '' or keep !='':
         # If need to fix special missing values, then convert them to
@@ -261,7 +266,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
 
             * Fix missing values;
             data %s;
-                set %s.%s; 
+                set %s.%s(encoding=%s); 
 
                 * dsf_fix;
                 %s
@@ -282,7 +287,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
         sas_code = sas_template % (libname_stmt, new_table, 
-                                    schema, sas_table, dsf_fix,
+                                   schema, sas_table, sas_encoding, dsf_fix,
                                    fix_cr_code, fund_names_fix, new_table)
                                    
     else:
@@ -378,7 +383,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
                drop="", obs="", rename="", keep="",
                alt_table_name = None, encoding=None, col_types=None, create_roles=True,
-               sas_schema=None):
+               sas_schema=None, sas_encoding=None):
 
     if not alt_table_name:
         alt_table_name = table_name
@@ -414,7 +419,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                                  schema=sas_schema, wrds_id=wrds_id,
                                  drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
-                                 obs=obs, rename=rename)
+                                 obs=obs, rename=rename, sas_encoding=sas_encoding)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
     now = strftime("%H:%M:%S", gmtime())
@@ -457,16 +462,13 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
         wrds_id=os.getenv("WRDS_ID"), rpath=None, fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
         obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True,
-        sas_schema=None):
+        sas_schema=None, sas_encoding=None):
           
     if not sas_schema:
         sas_schema = schema
         
     if not alt_table_name:
         alt_table_name = table_name
-          
-    if rpath:
-        force = True
         
     if not engine:
         if not (host and dbname):
@@ -503,7 +505,7 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
                 rpath=rpath, fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
                 drop=drop, keep=keep, obs=obs, rename=rename, alt_table_name=alt_table_name,
                 encoding=encoding, col_types=col_types, create_roles=create_roles,
-                sas_schema=sas_schema)
+                sas_schema=sas_schema, sas_encoding=sas_encoding)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
