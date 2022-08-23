@@ -218,7 +218,9 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         rename_str = ""
         
     if not sas_encoding:
-        sas_encoding="wlatin1"
+        sas_encoding_str=""
+    else:
+        sas_encoding_str="(encoding=" + sas_encoding + ")"
 
     if fix_missing or drop != '' or obs != '' or keep !='':
         # If need to fix special missing values, then convert them to
@@ -266,7 +268,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
 
             * Fix missing values;
             data %s;
-                set %s.%s(encoding=%s); 
+                set %s.%s%s; 
 
                 * dsf_fix;
                 %s
@@ -287,7 +289,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
         sas_code = sas_template % (libname_stmt, new_table, 
-                                   schema, sas_table, sas_encoding, dsf_fix,
+                                   schema, sas_table, sas_encoding_str, dsf_fix,
                                    fix_cr_code, fund_names_fix, new_table)
                                    
     else:
