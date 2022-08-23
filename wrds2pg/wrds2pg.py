@@ -402,7 +402,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE")
   
     # Create schema (and associated role) if necessary
-    insp = reflection.Inspector.from_engine(engine)
+    insp = sqlalchemy.inspect(engine)
     if not schema in insp.get_schema_names():
         res = engine.execute("CREATE SCHEMA " + schema)
         
