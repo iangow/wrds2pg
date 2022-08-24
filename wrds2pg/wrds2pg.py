@@ -3,7 +3,7 @@ import pandas as pd
 from io import StringIO
 import re, subprocess, os, paramiko
 from time import gmtime, strftime
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -306,7 +306,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename="", 
-                   drop="", obs=None, encoding=None):
+                   drop="", obs=None, encoding=None, fpath=None, rpath=None):
 
     if not encoding:
         encoding = "utf-8"
@@ -314,7 +314,8 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
     if not sas_schema:
         sas_schema = schema
 
-    p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, rename=rename, obs=obs)
+    p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, rename=rename, obs=obs,
+                         fpath=fpath, rpath=rpath)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
@@ -402,7 +403,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     res = engine.execute("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE")
   
     # Create schema (and associated role) if necessary
-    insp = sqlalchemy.inspect(engine)
+    insp = inspect(engine)
     if not schema in insp.get_schema_names():
         res = engine.execute("CREATE SCHEMA " + schema)
         
