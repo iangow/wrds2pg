@@ -362,12 +362,6 @@ def get_table_comment(table_name, schema, engine):
         return(res)
     else:
         return ""
-
-def create_role(engine, role):
-    with engine.connect() as conn:
-        user_exists = conn.execute(text("SELECT 1 FROM pg_roles WHERE rolname='%s'" % (role)))
-        if not user_exists.fetchone():
-            conn.execute(text("CREATE ROLE %s" % (role)))
         
 def set_table_comment(table_name, schema, comment, engine):
 
@@ -403,28 +397,23 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                     alt_table_name=alt_table_name, col_types=col_types,
                                     sas_schema=sas_schema)
 
-    with engine.connect() as conn:
-        res = conn.execute(text("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE"))
-  
+    process_sql("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE", engine)
+        
     # Create schema (and associated role) if necessary
     insp = inspect(engine)
     if not schema in insp.get_schema_names():
-        with engine.connect() as conn:
-            res = conn.execute(text("CREATE SCHEMA " + schema))
-        
+        process_sql("CREATE SCHEMA " + schema, engine)
+            
         if create_roles:
             if not role_exists(engine, schema):
                 create_role(engine, schema)
-            with engine.connect() as conn:
-                res = conn.execute(text("ALTER SCHEMA " + schema + " OWNER TO " + schema))
+            process_sql("ALTER SCHEMA " + schema + " OWNER TO " + schema, engine)
             if not role_exists(engine, "%s_access" % schema):
                 create_role(engine, "%s_access" % schema)
-            with engine.connect() as conn:
-                res = conn.execute(text("GRANT USAGE ON SCHEMA " + schema + " TO " + schema + "_access"))
-    
-    with engine.connect() as conn:
-        res = conn.execute(text(make_table_data["sql"]))
-
+            process_sql("GRANT USAGE ON SCHEMA " + schema + " TO " + 
+                         schema + "_access", engine)
+    process_sql(make_table_data["sql"], engine)
+        
     now = strftime("%H:%M:%S", gmtime())
     print("Beginning file import at %s." % now)
     print("Importing data into %s.%s" % (schema, alt_table_name))
@@ -535,24 +524,21 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
                 
             sql = r"""
                 GRANT SELECT ON "%s"."%s"  TO %s_access""" % (schema, alt_table_name, schema)
-            with engine.connect() as conn:
-                conn.execute(text(sql))
+            res = process_sql(sql, engine)
 
-        return True
+        return res
 
 def process_sql(sql, engine):
 
-    connection = engine.raw_connection()
+    with engine.connect() as conn:
+        try:
+            res = conn.execute(text(sql))
+            res.close()
+            conn.commit()
+        finally:
+            conn.close()
 
-    try:
-        cursor = connection.cursor()
-        cursor.execute(text(sql))
-        print(cursor.statusmessage)
-
-        cursor.close()
-        connection.commit()
-    finally:
-        connection.close()
+    return True
 
 def run_file_sql(file, engine):
     f = open(file, 'r')
@@ -584,9 +570,7 @@ def role_exists(engine, role):
     return rs[0] > 0
 
 def create_role(engine, role):
-    with engine.connect() as conn:
-        res = conn.execute(text("CREATE ROLE %s" % role))
-        print("Role {} created.".format(role))
+    process_sql("CREATE ROLE %s" % role, engine)
     return True
 
 def get_wrds_tables(schema, wrds_id=None):
