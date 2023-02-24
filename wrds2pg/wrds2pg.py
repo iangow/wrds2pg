@@ -110,10 +110,9 @@ def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
 
     return(df)
 
-def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
-                  rpath=None, drop="", keep="", rename="", return_sql=True, \
-                  alt_table_name=None, col_types=None, sas_schema=None):
-                      
+def make_sas_code(table_name, schema, wrds_id=None, fpath=None, \
+                  rpath=None, drop="", keep="", rename="", \
+                  alt_table_name=None, sas_schema=None):
     if not sas_schema:
         sas_schema = schema
         
@@ -124,9 +123,6 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
         libname_stmt = "libname %s '%s';" % (sas_schema, rpath)
     else:
         libname_stmt = ""
-
-    if not alt_table_name:
-        alt_table_name = table_name
 
     sas_template = """
         options nonotes nosource;
@@ -164,6 +160,20 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
 
     sas_code = sas_template % (libname_stmt, sas_schema, table_name, drop_str,
                                keep_str, rename_str)
+    return sas_code
+                             
+
+def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
+                  rpath=None, drop="", keep="", rename="", return_sql=True, \
+                  alt_table_name=None, col_types=None, sas_schema=None):
+                      
+    if not alt_table_name:
+        alt_table_name = table_name
+        
+    sas_code = make_sas_code(table_name=table_name, \
+                             schema = schema, wrds_id=wrds_id, fpath=fpath, \
+                  rpath=rpath, drop=drop, keep=keep, rename=rename, \
+                  alt_table_name=alt_table_name, sas_schema=sas_schema)
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
@@ -179,12 +189,12 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
         for var in col_types.keys():
             df.loc[df.name == var, 'postgres_type'] = col_types[var]
         datetimes = [var for var in datetimes if var not in col_types.keys()]
-        
+    rows_str = df.apply(get_row_sql, axis=1).str.cat(sep=", ")
     make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + \
-                      df.apply(get_row_sql, axis=1).str.cat(sep=", ") + ")"
+                      rows_str + ")"
 
     datetime_cols = [field.lower() for field in datetimes]
-
+    
     if return_sql:
         return {"sql":make_table_sql, "datetimes":datetime_cols}
     else:
@@ -307,7 +317,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename="", 
-                   drop="", obs=None, encoding=None, fpath=None, rpath=None):
+                   drop="", obs=None, encoding=None, fpath=None, rpath=None,
+                   sas_schema=None):
 
     if not encoding:
         encoding = "utf-8"
