@@ -460,16 +460,17 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
     copy_cmd =  "COPY " + schema + "." + table_name + ' ("' + '", "'.join(var_names) + '")'
     copy_cmd += " FROM STDIN CSV ENCODING '%s'" % encoding
     
-    connection = engine.raw_connection()
-    try:
-        cursor = connection.cursor()
-        cursor.execute("SET DateStyle TO 'ISO, MDY'")
-        cursor.copy_expert(copy_cmd, p)
-        cursor.close()
-        connection.commit()
-    finally:
-        connection.close()
-        p.close()
+    with engine.connect() as conn:
+        connection_fairy = conn.connection
+        try:
+            with connection_fairy.cursor() as curs:
+                curs.execute("SET DateStyle TO 'ISO, MDY'")
+                curs.copy_expert(copy_cmd, p)
+                curs.close()
+        finally:
+            connection_fairy.commit()
+            conn.close()
+            p.close()
     return True
 
 def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
@@ -545,7 +546,6 @@ def process_sql(sql, engine):
         try:
             res = conn.execute(text(sql))
             res.close()
-            conn.commit()
         finally:
             conn.close()
 
