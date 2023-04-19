@@ -78,6 +78,7 @@ sudo -H pip3 install git+https://github.com/iangow/wrds2pg --upgrade
 ```
 
 This software is also available from PyPI. To install it from [PyPI](https://pypi.org/project/wrds2pg/):
+
 ```
 pip3 install wrds2pg
 ```
