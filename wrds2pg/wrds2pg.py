@@ -542,12 +542,15 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
 
 def process_sql(sql, engine):
 
-    with engine.connect() as conn:
-        try:
-            res = conn.execute(text(sql))
-            res.close()
-        finally:
-            conn.close()
+    connection = engine.connect()
+    trans = connection.begin()
+
+    try:
+        res = connection.execute(text(sql))
+        trans.commit()
+    except:
+        trans.rollback()
+        raise
 
     return True
 
