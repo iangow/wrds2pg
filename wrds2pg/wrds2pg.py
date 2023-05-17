@@ -345,7 +345,7 @@ def get_modified_str(table_name, schema, wrds_id, encoding=None, rpath=None):
     sas_code = "proc contents data=" + rpath + "." + table_name + "(encoding='wlatin1');"
 
     p = get_process(sas_code, wrds_id)
-    contents = StringIO(p.read().decode(encoding)).readlines()
+    contents = p.readlines()
     modified = ""
 
     next_row = False
