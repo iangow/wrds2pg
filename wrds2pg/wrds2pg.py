@@ -537,6 +537,8 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
             sql = r"""
                 GRANT SELECT ON "%s"."%s"  TO %s_access""" % (schema, alt_table_name, schema)
             res = process_sql(sql, engine)
+        else:
+            res = True
 
         return res
 
