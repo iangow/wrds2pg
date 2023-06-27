@@ -439,10 +439,14 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
 
     for var in make_table_data["datetimes"]:
         print("Fixing %s" % var)
+        if schema == "rpa":
+            rplc_dt_reg = "(\d{2}[A-Z]{3}\d{2}):"
+        else:
+            rplc_dt_reg = "(\d{2}[A-Z]{3}\d{4}):"
         sql = r"""
             ALTER TABLE "%s"."%s"
             ALTER %s TYPE timestamp
-            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{4}):', '\1 ' )::timestamp""" % (schema, alt_table_name, var, var)
+            USING regexp_replace(%s, '%s', '\1 ' )::timestamp""" % (schema, alt_table_name, var, var, rplc_dt_reg)
         with engine.connect() as conn:
             conn.execute(text(sql))
 
