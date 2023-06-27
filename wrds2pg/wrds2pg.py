@@ -449,6 +449,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
             USING regexp_replace(%s, '%s', '\1 ' )::timestamp""" % (schema, alt_table_name, var, var, rplc_dt_reg)
         with engine.connect() as conn:
             conn.execute(text(sql))
+            conn.commit()
 
     return res
 
