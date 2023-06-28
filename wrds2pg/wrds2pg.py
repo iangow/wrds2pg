@@ -183,20 +183,21 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
     # Identify the datetime fields. These need special handling.
     df['name'] = df['name'].str.lower()
     df['postgres_type'] = df.apply(code_row, axis=1)
-    datetimes = df.loc[df['postgres_type']=="timestamp", "name"]
+    datetimes_inferred = df.loc[df['postgres_type']=="timestamp", "name"]
+    datetimes_inferred_cols = [field.lower() for field in datetimes_inferred
+                                 if field not in col_types.keys()]
+    datetimes_specified = [col for col in col_types if col_types[col]=='timestamp']
+    datetimes = list(set(datetimes_inferred_cols + datetimes_specified))
     
     if col_types:
         for var in col_types.keys():
             df.loc[df.name == var, 'postgres_type'] = col_types[var]
-        datetimes = [var for var in datetimes if var not in col_types.keys()]
     rows_str = df.apply(get_row_sql, axis=1).str.cat(sep=", ")
     make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + \
                       rows_str + ")"
-
-    datetime_cols = [field.lower() for field in datetimes]
     
     if return_sql:
-        return {"sql":make_table_sql, "datetimes":datetime_cols}
+        return {"sql": make_table_sql, "datetimes": datetimes}
     else:
         df['name'] = df['name'].str.lower()
         return df
@@ -442,9 +443,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
         sql = r"""
             ALTER TABLE "%s"."%s"
             ALTER %s TYPE timestamp
-            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{4}):', '\1 ' )::timestamp""" % (schema, alt_table_name, var, var)
-        with engine.connect() as conn:
-            conn.execute(text(sql))
+            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{2,4}):?(.*$)', '\1 \2' )::timestamp""" % (schema, alt_table_name, var, var)
+        process_sql(sql, engine)
 
     return res
 
