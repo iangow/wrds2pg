@@ -169,6 +169,9 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
                       
     if not alt_table_name:
         alt_table_name = table_name
+    
+    if not col_types:
+        col_types = {}
         
     sas_code = make_sas_code(table_name=table_name, \
                              schema = schema, wrds_id=wrds_id, fpath=fpath, \
