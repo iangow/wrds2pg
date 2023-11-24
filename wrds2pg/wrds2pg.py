@@ -652,11 +652,13 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not encoding:
         encoding = "utf-8"
 
+    data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
     print("Getting from WRDS.\n")
     schema_dir = Path(data_dir, schema)
+
     if not os.path.exists(schema_dir):
         os.makedirs(schema_dir)
     file_path = Path(data_dir, schema, table_name).with_suffix('.parquet')
