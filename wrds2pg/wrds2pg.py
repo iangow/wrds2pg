@@ -5,6 +5,8 @@ import re, subprocess, os, paramiko
 from time import gmtime, strftime
 from sqlalchemy import create_engine, inspect
 from sqlalchemy import text
+import duckdb
+from pathlib import Path
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -608,3 +610,71 @@ def get_wrds_tables(schema, wrds_id=None):
     table_list = [key.name for key in metadata.tables.values()]
     wrds_engine.dispose()
     return table_list
+
+def get_contents(table_name, schema, wrds_id=None):
+        
+    sas_code = make_sas_code(table_name=table_name, \
+                             schema = schema, wrds_id=wrds_id)
+    
+    # Run the SAS code on the WRDS server and get the result
+    df = sas_to_pandas(sas_code, wrds_id)
+    df['name'] = [name.lower() for name in df['name']]
+    return df
+
+def get_types(df):
+    # Make all variable names lower case, get
+    # inferred types, then set explicit types if given
+    # Identify the datetime fields. These need special handling.
+    df['type'] = df.apply(code_row, axis=1)
+    dtypes = dict(zip(df['name'], df['type']))
+    return dtypes
+
+def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
+                    dbname=os.getenv("PGDATABASE"), engine=None, 
+                    wrds_id=os.getenv("WRDS_ID"), data_dir = ".",
+                    fix_missing=False, fix_cr=False, drop="", keep="", 
+                    obs="", rename="", alt_table_name=None, encoding=None, 
+                    col_types=None, create_roles=True, sas_schema=None, sas_encoding=None):
+          
+    if not sas_schema:
+        sas_schema = schema
+        
+    if not alt_table_name:
+        alt_table_name = table_name
+        
+    if not engine:
+        if not (host and dbname):
+            print("Error: Missing connection variables. Please specify engine or (host, dbname).")
+            quit()
+        else:
+            engine = create_engine("postgresql://" + host + "/" + dbname)
+
+    if not encoding:
+        encoding = "utf-8"
+
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    print("Getting from WRDS.\n")
+    file_path = Path(data_dir, schema, table_name).with_suffix('.parquet')
+
+    df_info = get_contents(table_name, schema, wrds_id)
+    names = [name for name in df_info['name']]
+    dtypes = get_types(df_info)
+    for key in col_types.keys():
+        dtypes[key] = col_types[key]
+
+    con = duckdb.connect("file.db")
+
+    p = get_wrds_process(table_name=table_name, 
+                         schema=schema, wrds_id=wrds_id,
+                         drop=drop, keep=keep, fix_cr=fix_cr, 
+                         fix_missing=fix_missing, obs=obs, rename=rename,
+                         encoding=encoding, sas_encoding=sas_encoding)
+    
+    con.from_csv_auto(StringIO(p.read().decode(encoding)),
+                      date_format = "%Y%m%d",
+                      names = names, 
+                      dtype = dtypes).write_parquet(str(file_path))
+    con.close()
+    return True
