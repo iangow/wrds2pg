@@ -670,17 +670,15 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
         for key in col_types.keys():
             dtypes[key] = col_types[key]
 
-    con = duckdb.connect("file.db")
-
     p = get_wrds_process(table_name=table_name, 
                          schema=schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
     
-    con.from_csv_auto(StringIO(p.read().decode(encoding)),
+    duckdb.from_csv_auto(StringIO(p.read().decode(encoding)),
+                      parallel = True,
                       date_format = "%Y%m%d",
                       names = names, 
                       dtype = dtypes).write_parquet(str(file_path))
-    con.close()
     return True
