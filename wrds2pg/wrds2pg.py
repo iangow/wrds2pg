@@ -631,7 +631,8 @@ def get_types(df):
 
 def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
                     dbname=os.getenv("PGDATABASE"), engine=None, 
-                    wrds_id=os.getenv("WRDS_ID"), data_dir = ".",
+                    wrds_id=os.getenv("WRDS_ID"), 
+                    data_dir=os.getenv("DATA_DIR"),
                     fix_missing=False, fix_cr=False, drop="", keep="", 
                     obs="", rename="", alt_table_name=None, encoding=None, 
                     col_types=None, create_roles=True, sas_schema=None, sas_encoding=None):
