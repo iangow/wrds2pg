@@ -661,8 +661,9 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     df_info = get_contents(table_name, schema, wrds_id)
     names = [name for name in df_info['name']]
     dtypes = get_types(df_info)
-    for key in col_types.keys():
-        dtypes[key] = col_types[key]
+    if col_types:
+        for key in col_types.keys():
+            dtypes[key] = col_types[key]
 
     con = duckdb.connect("file.db")
 
