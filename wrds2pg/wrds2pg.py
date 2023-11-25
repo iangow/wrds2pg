@@ -636,17 +636,15 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                     data_dir=os.getenv("DATA_DIR"),
                     memory_limit = "1GB",
                     fix_missing=False, fix_cr=False, drop="", keep="", 
-                    obs="", rename="", alt_table_name=None, encoding=None, 
-                    col_types=None, create_roles=True, sas_schema=None, sas_encoding=None):
+                    obs="", rename="", alt_table_name=None, encoding="utf-8", 
+                    col_types=None, create_roles=True, sas_schema=None, 
+                    sas_encoding=None):
           
     if not sas_schema:
         sas_schema = schema
         
     if not alt_table_name:
         alt_table_name = table_name
-        
-    if not encoding:
-        encoding = "utf-8"
 
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
