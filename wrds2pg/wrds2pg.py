@@ -661,7 +661,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
             dtypes[key] = col_types[key]
 
     p = get_wrds_process(table_name=table_name, 
-                         schema=schema, wrds_id=wrds_id,
+                         schema=sas_schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
