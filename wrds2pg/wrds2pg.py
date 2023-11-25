@@ -653,7 +653,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     file_path = Path(data_dir, schema, table_name).with_suffix('.parquet')
 
     # Get names and data types
-    df_info = get_contents(table_name, schema, wrds_id)
+    df_info = get_contents(table_name, sas_schema, wrds_id)
     names = [name for name in df_info['name']]
     dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
     if col_types:
