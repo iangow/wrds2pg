@@ -615,7 +615,7 @@ def get_wrds_tables(schema, wrds_id=None):
 def get_contents(table_name, schema, wrds_id=None):
         
     sas_code = make_sas_code(table_name=table_name, \
-                             schema = schema, wrds_id=wrds_id)
+                             schema=schema, wrds_id=wrds_id)
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id)
