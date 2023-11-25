@@ -7,7 +7,8 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy import text
 import duckdb
 from pathlib import Path
-import tempfile
+import shutil
+import gzip 
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -664,19 +665,16 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
     
+    print("Saving data to CSV.")
+    with gzip.GzipFile(filename='temp.csv.gz', mode='wb') as f:
+        shutil.copyfileobj(p, f)
 
-    # create a temporary file and write some data to it
-    # db = tempfile.TemporaryFile()
-    tempdir = tempfile.gettempdir()
-    
+    print("Saving data to " + str(file_path) + ".")
     with duckdb.connect() as con:
-        con.execute("SET temp_directory='" + tempdir + "'")
-        con.execute("SET memory_limit TO '" + memory_limit + "'")
-        con.from_csv_auto(StringIO(p.read().decode(encoding)),
-                          parallel = True,
+        con.from_csv_auto('temp.csv.gz',
                           date_format = "%Y%m%d",
-                          names = names, 
+                          names = names,
+                          header = True,
                           dtype = dtypes).write_parquet(str(file_path))
-        print("Saving data to ", str(file_path), ".")
-    con.close()
+    
     return True
