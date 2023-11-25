@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy import text
 import duckdb
 from pathlib import Path
+import tempfile
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -630,9 +631,10 @@ def get_types(df):
     return dtypes
 
 def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
-                    dbname=os.getenv("PGDATABASE"), engine=None, 
+                    dbname=os.getenv("PGDATABASE"),
                     wrds_id=os.getenv("WRDS_ID"), 
                     data_dir=os.getenv("DATA_DIR"),
+                    memory_limit = "1GB",
                     fix_missing=False, fix_cr=False, drop="", keep="", 
                     obs="", rename="", alt_table_name=None, encoding=None, 
                     col_types=None, create_roles=True, sas_schema=None, sas_encoding=None):
@@ -643,13 +645,6 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not alt_table_name:
         alt_table_name = table_name
         
-    if not engine:
-        if not (host and dbname):
-            print("Error: Missing connection variables. Please specify engine or (host, dbname).")
-            quit()
-        else:
-            engine = create_engine("postgresql://" + host + "/" + dbname)
-
     if not encoding:
         encoding = "utf-8"
 
@@ -657,7 +652,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-    print("Getting from WRDS.\n")
+    print("Getting from WRDS.")
     schema_dir = Path(data_dir, schema)
 
     if not os.path.exists(schema_dir):
@@ -677,9 +672,19 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
     
-    duckdb.from_csv_auto(StringIO(p.read().decode(encoding)),
-                      parallel = True,
-                      date_format = "%Y%m%d",
-                      names = names, 
-                      dtype = dtypes).write_parquet(str(file_path))
+
+    # create a temporary file and write some data to it
+    # db = tempfile.TemporaryFile()
+    tempdir = tempfile.gettempdir()
+    
+    with duckdb.connect() as con:
+        con.execute("SET temp_directory='" + tempdir + "'")
+        con.execute("SET memory_limit TO '" + memory_limit + "'")
+        con.from_csv_auto(StringIO(p.read().decode(encoding)),
+                          parallel = True,
+                          date_format = "%Y%m%d",
+                          names = names, 
+                          dtype = dtypes).write_parquet(str(file_path))
+        print("Saving data to ", str(file_path), ".")
+    con.close()
     return True
