@@ -8,7 +8,8 @@ from sqlalchemy import text
 import duckdb
 from pathlib import Path
 import shutil
-import gzip 
+import gzip
+import tempfile
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -620,6 +621,7 @@ def get_contents(table_name, schema, wrds_id=None):
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id)
+    df['postgres_type'] = df.apply(code_row, axis=1)
     df['name'] = [name.lower() for name in df['name']]
     return df
 
@@ -643,7 +645,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-    print("Getting from WRDS.")
+    print("Getting data from WRDS.")
     schema_dir = Path(data_dir, schema)
 
     if not os.path.exists(schema_dir):
@@ -652,7 +654,6 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
 
     # Get names and data types
     df_info = get_contents(table_name, schema, wrds_id)
-    df_info['postgres_type'] = df_info.apply(code_row, axis=1)
     names = [name for name in df_info['name']]
     dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
     if col_types:
@@ -665,13 +666,15 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
     
-    print("Saving data to CSV.")
-    with gzip.GzipFile(filename='temp.csv.gz', mode='wb') as f:
+    print("Saving data to temporary CSV.")
+    t = tempfile.NamedTemporaryFile()
+    with gzip.GzipFile(t.name, mode='wb') as f:
         shutil.copyfileobj(p, f)
 
-    print("Saving data to " + str(file_path) + ".")
+    print("Converting CSV to " + str(file_path) + ".")
     with duckdb.connect() as con:
-        con.from_csv_auto('temp.csv.gz',
+        con.from_csv_auto(t.name,
+                          compression = "gzip",
                           date_format = "%Y%m%d",
                           names = names,
                           header = True,
