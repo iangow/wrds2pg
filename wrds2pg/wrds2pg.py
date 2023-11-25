@@ -622,14 +622,6 @@ def get_contents(table_name, schema, wrds_id=None):
     df['name'] = [name.lower() for name in df['name']]
     return df
 
-def get_types(df):
-    # Make all variable names lower case, get
-    # inferred types, then set explicit types if given
-    # Identify the datetime fields. These need special handling.
-    df['type'] = df.apply(code_row, axis=1)
-    dtypes = dict(zip(df['name'], df['type']))
-    return dtypes
-
 def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
                     dbname=os.getenv("PGDATABASE"),
                     wrds_id=os.getenv("WRDS_ID"), 
@@ -657,9 +649,11 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
         os.makedirs(schema_dir)
     file_path = Path(data_dir, schema, table_name).with_suffix('.parquet')
 
+    # Get names and data types
     df_info = get_contents(table_name, schema, wrds_id)
+    df_info['postgres_type'] = df_info.apply(code_row, axis=1)
     names = [name for name in df_info['name']]
-    dtypes = get_types(df_info)
+    dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
     if col_types:
         for key in col_types.keys():
             dtypes[key] = col_types[key]
