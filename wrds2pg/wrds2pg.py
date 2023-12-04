@@ -633,7 +633,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                     fix_missing=False, fix_cr=False, drop="", keep="", 
                     obs="", rename="", alt_table_name=None, encoding="utf-8", 
                     col_types=None, create_roles=True, sas_schema=None, 
-                    sas_encoding=None):
+                    sas_encoding=None, date_format="%Y%m%d"):
           
     if not sas_schema:
         sas_schema = schema
@@ -675,7 +675,7 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     with duckdb.connect() as con:
         con.from_csv_auto(t.name,
                           compression = "gzip",
-                          date_format = "%Y%m%d",
+                          date_format = date_format,
                           names = names,
                           header = True,
                           dtype = dtypes).write_parquet(str(file_path))
