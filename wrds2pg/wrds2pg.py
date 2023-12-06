@@ -10,6 +10,8 @@ from pathlib import Path
 import shutil
 import gzip
 import tempfile
+import pyarrow.parquet as pq
+import pyarrow as pa
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -217,6 +219,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
+            * fix_cr_code;
             array _char _character_;
             
             do over _char;
@@ -240,13 +243,15 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     if not sas_encoding:
         sas_encoding_str=""
     else:
-        sas_encoding_str="(encoding=" + sas_encoding + ")"
+        sas_encoding_str="(encoding='" + sas_encoding + "')"
 
     if fix_missing or drop != '' or obs != '' or keep !='':
         # If need to fix special missing values, then convert them to
         # regular missing values, then run PROC EXPORT
         if table_name == "dsf":
-            dsf_fix = "format numtrd 8.;\n"
+            dsf_fix = """
+                * dsf_fix;
+                format numtrd 8.;\n"""
         else:
             dsf_fix = ""
 
@@ -255,8 +260,15 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         else:
             obs_str = ""
 
-        drop_str = "drop=" + drop + " "
-        keep_str = "keep=" + keep + " "
+        if drop != "":
+            drop_str = "drop=" + drop + " "
+        else:
+            drop_str = ""
+        
+        if keep != "":
+            keep_str = "keep=" + keep + " "
+        else:
+            keep_str = ""
         
         if keep:
             print(keep_str)
@@ -281,6 +293,17 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         new_table = "%s%s" % (schema, table_name)
         new_table = new_table[0:min(len(new_table), 32)]
         
+        if fix_missing:
+            fix_missing_str = """
+                * fix_missing code;
+                array allvars _numeric_ ;
+
+                do over allvars;
+                  if missing(allvars) then allvars = . ;
+                end;"""
+        else:
+            fix_missing_str = ""
+        
         sas_template = """
             options nosource nonotes;
 
@@ -290,17 +313,11 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             data %s;
                 set %s.%s%s; 
 
-                * dsf_fix;
+                %s
+                
                 %s
 
-                * fix_cr_code;
                 %s
-
-                array allvars _numeric_ ;
-
-                do over allvars;
-                  if missing(allvars) then allvars = . ;
-                end;
             run;
 
             * fund_names_fix;
@@ -310,8 +327,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             run;"""
         sas_code = sas_template % (libname_stmt, new_table, 
                                    schema, sas_table, sas_encoding_str, dsf_fix,
-                                   fix_cr_code, fund_names_fix, new_table)
-                                   
+                                   fix_cr_code, fix_missing_str, fund_names_fix, new_table)
+                              
     else:
 
         sas_template = """
@@ -633,25 +650,40 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                     fix_missing=False, fix_cr=False, drop="", keep="", 
                     obs="", rename="", alt_table_name=None, encoding="utf-8", 
                     col_types=None, create_roles=True, sas_schema=None, 
-                    sas_encoding=None, date_format="%Y%m%d"):
-          
-    if not sas_schema:
-        sas_schema = schema
-        
-    if not alt_table_name:
-        alt_table_name = table_name
+                    sas_encoding=None, date_format="%Y%m%d", force=False, fpath=None, rpath=None):
 
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-    print("Getting data from WRDS.")
+    if not sas_schema:
+        sas_schema = schema
+    
+    if not alt_table_name:
+        alt_table_name = table_name
+    
     schema_dir = Path(data_dir, schema)
 
     if not os.path.exists(schema_dir):
         os.makedirs(schema_dir)
-    file_path = Path(data_dir, schema, table_name).with_suffix('.parquet')
+    pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
 
+    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
+                                    rpath=rpath)
+    if os.path.exists(pq_file):
+        pq_modified = get_modified_pq(pq_file)
+    else:
+        pq_modified = ""
+        
+    if modified == pq_modified and not force and not fpath:
+        print(schema + "." + alt_table_name + " already up to date")
+        return False
+    if force:
+        print("Forcing update based on user request.")
+    else:
+        print("Updated %s.%s is available." % (schema, alt_table_name))
+        print("Getting from WRDS.\n")
+    
     # Get names and data types
     df_info = get_contents(table_name, sas_schema, wrds_id)
     names = [name for name in df_info['name']]
@@ -660,24 +692,58 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
         for key in col_types.keys():
             dtypes[key] = col_types[key]
 
+    print("Saving data to temporary CSV.")
+    csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
+    wrds_to_csv(table_name, schema, csv_file, 
+                wrds_id=wrds_id, 
+                fix_missing=fix_missing, 
+                fix_cr=fix_cr, 
+                drop=drop, keep=keep, 
+                obs=obs, rename=rename,
+                encoding=encoding, 
+                sas_schema=sas_schema, 
+                sas_encoding=sas_encoding)
+    print("Converting temporary CSV to parquet.")
+    csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
+    return True
+
+def wrds_to_csv(table_name, schema, csv_file, 
+                wrds_id=os.getenv("WRDS_ID"), 
+                fix_missing=False, fix_cr=False, drop="", keep="", 
+                obs="", rename="", encoding="utf-8", 
+                sas_schema=None, 
+                sas_encoding=None):
+          
+    if not sas_schema:
+        sas_schema = schema
+
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
                          fix_missing=fix_missing, obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
-    
-    print("Saving data to temporary CSV.")
-    t = tempfile.NamedTemporaryFile()
-    with gzip.GzipFile(t.name, mode='wb') as f:
+    with gzip.GzipFile(csv_file, mode='wb') as f:
         shutil.copyfileobj(p, f)
+        
+def get_modified_pq(file_name):
+    schema_md = pq.read_table(file_name).schema.metadata 
+    if not schema_md:
+        return ''
+    if b'last_modified' in schema_md.keys():
+        last_modified = schema_md[b'last_modified'].decode('utf-8')
+    else:
+        last_modified = ''
+    return last_modified
 
-    print("Converting CSV to " + str(file_path) + ".")
+def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format):
     with duckdb.connect() as con:
-        con.from_csv_auto(t.name,
-                          compression = "gzip",
-                          date_format = date_format,
-                          names = names,
-                          header = True,
-                          dtype = dtypes).write_parquet(str(file_path))
-    
-    return True
+        df = con.from_csv_auto(csv_file,
+                               compression = "gzip",
+                               date_format = date_format,
+                               names = names,
+                               header = True,
+                               dtype = dtypes)
+        df_arrow = df.arrow()
+        my_metadata = df_arrow.schema.with_metadata({b'last_modified': modified.encode()})
+        to_write = df_arrow.cast(my_metadata)
+        pq.write_table(to_write, pq_file)
