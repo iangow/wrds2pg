@@ -212,7 +212,7 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
         df['name'] = df['name'].str.lower()
         return df
 
-def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
+def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop="", keep="", fix_cr = False, 
                      fix_missing = False, obs="", rename="",
                      encoding=None, sas_encoding=None):
@@ -338,7 +338,19 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             proc export data=%s.%s(%s encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
 
-        sas_code = sas_template % (libname_stmt, schema, table_name, rename_str)
+        sas_code = sas_template % (libname_stmt, schema, table_name, rename_str) 
+    return sas_code        
+    
+def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
+                     drop="", keep="", fix_cr = False, 
+                     fix_missing = False, obs="", rename="",
+                     encoding=None, sas_encoding=None):
+    sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
+                                    rpath=rpath, fpath=fpath, schema=schema, 
+                                    drop=drop, rename=rename, keep=keep, fix_cr=fix_cr,
+                                    fix_missing=fix_missing, obs=obs, encoding=encoding,
+                                    sas_encoding=sas_encoding)
+    
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
