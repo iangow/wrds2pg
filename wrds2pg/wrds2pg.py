@@ -738,7 +738,8 @@ def wrds_to_csv(table_name, schema, csv_file,
         shutil.copyfileobj(p, f)
         
 def get_modified_pq(file_name):
-    schema_md = pq.read_table(file_name).schema.metadata 
+    md = pq.read_schema(file_name)
+    schema_md = md.metadata
     if not schema_md:
         return ''
     if b'last_modified' in schema_md.keys():
