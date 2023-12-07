@@ -788,14 +788,12 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         shutil.copyfileobj(p, f)
         
 def get_modified_csv(file_name):
-     # Get the last-modified time in seconds since the epoch
-    last_modified_timestamp = os.path.getmtime(file_name)
-
-    # Convert it into a datetime object
-    last_modified_datetime = datetime.fromtimestamp(last_modified_timestamp)
+     # Get the last-modified time in seconds since the epoch, convert to date and format as str
+    
+    last_modified = datetime.fromtimestamp(os.path.getmtime(file_name)).strftime("Last modified: %m/%d/%Y %H:%M:%S")
 
     # Format the datetime object as per the specified format
-    last_modified = last_modified_datetime.strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    # last_modified = last_modified_datetime.strftime("Last modified: %m/%d/%Y %H:%M:%S")
     
     return last_modified
   
