@@ -13,6 +13,7 @@ import tempfile
 import pyarrow.parquet as pq
 import pyarrow as pa
 import time
+from datetime import datetime
 
 from sqlalchemy.engine import reflection
 from os import getenv
