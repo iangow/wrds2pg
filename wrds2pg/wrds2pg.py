@@ -741,15 +741,31 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         csv_file = Path(data_dir, schema, table_name).with_suffix('.csv.gz')
         # Extract the date-time part from the modified string
         modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
+        
+        
+       
+        if os.path.exists(csv_file):
+            csv_modified = get_modified_csv(csv_file)
+        else:
+            csv_modified = ""
+            
+        if modified == csv_modified and not force and not fpath:
+            print(schema + "." + table_name + " already up to date")
+            return False
+        if force:
+            print("Forcing update based on user request.")
+        else:
+            print("Updated %s.%s is available." % (schema, table_name))
+            print("Getting from WRDS.\n")
+        print("Saving data to " + str(csv_file) + ".")    
         date_time_str = modified.split("Last modified: ")[1]
-        print("last modified:"+ date_time_str)
+        # print("last modified:"+ date_time_str)
+        
         # Convert date_time_str to a timestamp
         modified_time = time.mktime(datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").timetuple())
     
         # Update the last-modified timestamp of the CSV file
         os.utime(csv_file, (modified_time, modified_time))
-        
-        print("Saving data to " + str(csv_file) + ".")
 
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
@@ -759,6 +775,18 @@ def wrds_to_csv(table_name, schema, csv_file=None,
     with gzip.GzipFile(csv_file, mode='wb') as f:
         shutil.copyfileobj(p, f)
         
+def get_modified_csv(file_name):
+     # Get the last-modified time in seconds since the epoch
+    last_modified_timestamp = os.path.getmtime(file_path)
+
+    # Convert it into a datetime object
+    last_modified_datetime = datetime.fromtimestamp(last_modified_timestamp)
+
+    # Format the datetime object as per the specified format
+    last_modified = last_modified_datetime.strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    
+    return last_modified
+  
 def get_modified_pq(file_name):
     md = pq.read_schema(file_name)
     schema_md = md.metadata
