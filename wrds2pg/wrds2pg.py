@@ -696,6 +696,9 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not sas_schema:
         sas_schema = schema
         
+    if not alt_table_name:
+        alt_table_name = table_name
+    
     pq_file = get_pq_file(table_name=table_name, schema=schema, 
                           data_dir=data_dir, sas_schema=sas_schema, 
                           alt_table_name=alt_table_name)
