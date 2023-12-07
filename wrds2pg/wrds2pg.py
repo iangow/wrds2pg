@@ -764,8 +764,20 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         # Convert date_time_str to a timestamp
         modified_time = time.mktime(datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").timetuple())
     
+        
+        
+        p = get_wrds_process(table_name=table_name, 
+                         schema=sas_schema, wrds_id=wrds_id,
+                         drop=drop, keep=keep, fix_cr=fix_cr, 
+                         fix_missing=fix_missing, obs=obs, rename=rename,
+                         encoding=encoding, sas_encoding=sas_encoding)
+        with gzip.GzipFile(csv_file, mode='wb') as f:
+            shutil.copyfileobj(p, f)
+        # Get the current time for access time
+        current_time = time.time()    
         # Update the last-modified timestamp of the CSV file
-        os.utime(csv_file, (modified_time, modified_time))
+        os.utime(csv_file, (current_time, modified_time))    
+        return True
 
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
