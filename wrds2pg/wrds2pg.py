@@ -374,13 +374,13 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
 
     return(df)
 
-def get_modified_str(table_name, schema, wrds_id, encoding=None, rpath=None):
+def get_modified_str(table_name, sas_schema, wrds_id, encoding=None, rpath=None):
     
     if not encoding:
         encoding = "utf-8"
 
-    if rpath is None:
-        rpath = schema
+    if not rpath:
+        rpath = sas_schema
     
     sas_code = "proc contents data=" + rpath + "." + table_name + "(encoding='wlatin1');"
 
@@ -534,8 +534,8 @@ def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("
         comment = get_table_comment(alt_table_name, schema, engine)
         
         # 2. Get modified date from WRDS
-        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
-                                    rpath=rpath)
+        modified = get_modified_str(table_name, sas_schema, wrds_id, 
+                                    encoding=encoding, rpath=rpath)
     else:
         comment = 'Updated on ' + strftime("%Y-%m-%d %H:%M:%S", gmtime())
         modified = comment
@@ -656,16 +656,18 @@ def get_contents(table_name, schema, wrds_id=None):
     df['name'] = [name.lower() for name in df['name']]
     return df
 
-def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
-                    dbname=os.getenv("PGDATABASE"),
-                    wrds_id=os.getenv("WRDS_ID"), 
-                    data_dir=os.getenv("DATA_DIR"),
-                    memory_limit = "1GB",
-                    fix_missing=False, fix_cr=False, drop="", keep="", 
-                    obs="", rename="", alt_table_name=None, encoding="utf-8", 
-                    col_types=None, create_roles=True, sas_schema=None, 
-                    sas_encoding=None, date_format="%Y%m%d", force=False, fpath=None, rpath=None):
+def pq_types(table_name, sas_schema, wrds_id, col_types):
+    # Get names and data types
+    df_info = get_contents(table_name, sas_schema, wrds_id)
+    names = [name for name in df_info['name']]
+    dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
+    if col_types:
+        for key in col_types.keys():
+            dtypes[key] = col_types[key]
+    return {'dtypes': dtypes, 'names': names}
 
+def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"), 
+                sas_schema=None, alt_table_name=None):
     data_dir = os.path.expanduser(data_dir)
     
     if not sas_schema:
@@ -679,13 +681,30 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     if not os.path.exists(schema_dir):
         os.makedirs(schema_dir)
     pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
+    return pq_file
 
-    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
+def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
+                    dbname=os.getenv("PGDATABASE"),
+                    wrds_id=os.getenv("WRDS_ID"), 
+                    data_dir=os.getenv("DATA_DIR"),
+                    memory_limit = "1GB",
+                    fix_missing=False, fix_cr=False, drop="", keep="", 
+                    obs="", rename="", alt_table_name=None, encoding="utf-8", 
+                    col_types=None, create_roles=True, sas_schema=None, 
+                    sas_encoding=None, date_format="%Y%m%d", force=False, fpath=None, rpath=None):
     
-    if os.path.exists(pq_file):
-        pq_modified = get_modified_pq(pq_file)
-    else:
-        pq_modified = ""
+    if not sas_schema:
+        sas_schema = schema
+        
+    pq_file = get_pq_file(table_name=table_name, schema=schema, 
+                          data_dir=data_dir, sas_schema=sas_schema, 
+                          alt_table_name=alt_table_name)
+                
+    modified = get_modified_str(table_name=table_name, 
+                                sas_schema=sas_schema, wrds_id=wrds_id, 
+                                encoding=encoding, rpath=rpath)
+    
+    pq_modified = get_modified_pq(pq_file)
         
     if modified == pq_modified and not force and not fpath:
         print(schema + "." + alt_table_name + " already up to date")
@@ -696,13 +715,10 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
         print("Updated %s.%s is available." % (schema, alt_table_name))
         print("Getting from WRDS.\n")
     
-    # Get names and data types
-    df_info = get_contents(table_name, sas_schema, wrds_id)
-    names = [name for name in df_info['name']]
-    dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
-    if col_types:
-        for key in col_types.keys():
-            dtypes[key] = col_types[key]
+    types = pq_types(table_name=table_name, sas_schema=sas_schema, 
+                     wrds_id=wrds_id, col_types=col_types)
+    names = types['names']
+    dtypes = types['dtypes']
 
     print("Saving data to temporary CSV.")
     csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
@@ -798,17 +814,29 @@ def get_modified_csv(file_name):
     return last_modified
   
 def get_modified_pq(file_name):
-    md = pq.read_schema(file_name)
-    schema_md = md.metadata
-    if not schema_md:
-        return ''
-    if b'last_modified' in schema_md.keys():
-        last_modified = schema_md[b'last_modified'].decode('utf-8')
+    if os.path.exists(file_name):
+        md = pq.read_schema(file_name)
+        schema_md = md.metadata
+        if not schema_md:
+            return ''
+        if b'last_modified' in schema_md.keys():
+            last_modified = schema_md[b'last_modified'].decode('utf-8')
+        else:
+            last_modified = ''
     else:
         last_modified = ''
     return last_modified
 
-def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format):
+def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
+                   wrds_id=os.getenv("WRDS_ID"),date_format="%Y%m%d", 
+                   row_group_size = 1048576):
+    types = pq_types(table_name, sas_schema, wrds_id)
+    names = types['names']
+    dtypes = types['dtypes']
+    csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
+
+def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
+              row_group_size = 1048576):
     with duckdb.connect() as con:
         df = con.from_csv_auto(csv_file,
                                compression = "gzip",
@@ -819,4 +847,4 @@ def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format):
         df_arrow = df.arrow()
         my_metadata = df_arrow.schema.with_metadata({b'last_modified': modified.encode()})
         to_write = df_arrow.cast(my_metadata)
-        pq.write_table(to_write, pq_file)
+        pq.write_table(to_write, pq_file, row_group_size = row_group_size)
