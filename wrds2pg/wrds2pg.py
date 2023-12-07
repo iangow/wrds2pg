@@ -719,15 +719,39 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
     return True
 
-def wrds_to_csv(table_name, schema, csv_file, 
-                wrds_id=os.getenv("WRDS_ID"), 
+def wrds_to_csv(table_name, schema, csv_file=None, 
+                wrds_id=os.getenv("WRDS_ID"),
+                data_dir=os.getenv("DATA_DIR"),
                 fix_missing=False, fix_cr=False, drop="", keep="", 
                 obs="", rename="", encoding="utf-8", 
                 sas_schema=None, 
                 sas_encoding=None):
-          
+        
     if not sas_schema:
         sas_schema = schema
+        
+          
+    if not csv_file:
+         
+        data_dir = os.path.expanduser(data_dir)
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        
+        if not alt_table_name:
+            alt_table_name = table_name
+        
+        schema_dir = Path(data_dir, schema)
+    
+        if not os.path.exists(schema_dir):
+            os.makedirs(schema_dir)
+        
+        csv_file = Path(data_dir, schema, table_name).with_suffix('.csv.gz')
+        
+        print("Saving data to " + str(csv_file) + ".")
+        
+        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
+                                    rpath=rpath)
+        print("Last modified " + modified + ".")
 
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
