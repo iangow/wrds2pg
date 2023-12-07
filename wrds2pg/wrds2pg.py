@@ -723,7 +723,7 @@ def wrds_to_csv(table_name, schema, csv_file=None,
                 fix_missing=False, fix_cr=False, drop="", keep="", 
                 obs="", rename="", encoding="utf-8", 
                 sas_schema=None, 
-                sas_encoding=None):
+                sas_encoding=None, force=False, fpath=None, rpath=None):
         
     if not sas_schema:
         sas_schema = schema
