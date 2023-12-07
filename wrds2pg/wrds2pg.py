@@ -12,6 +12,7 @@ import gzip
 import tempfile
 import pyarrow.parquet as pq
 import pyarrow as pa
+import time
 
 from sqlalchemy.engine import reflection
 from os import getenv
