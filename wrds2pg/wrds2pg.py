@@ -13,8 +13,8 @@ import tempfile
 import pyarrow.parquet as pq
 import pyarrow as pa
 import time
-from datetime import datetime
-
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy.engine import reflection
 from os import getenv
 
@@ -780,8 +780,12 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         date_time_str = modified.split("Last modified: ")[1]
         # print("last modified:"+ date_time_str)
         
-        # Convert date_time_str to a timestamp
-        modified_time = time.mktime(datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").timetuple())
+        # Convert date_time_str to a datetime object in UTC time zone
+        utc_dt = datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(timezone.utc)
+        # Convert to epoch time
+       
+        # Convert to epoch time
+        modified_time =  utc_dt.timestamp()
     
         
         
@@ -808,8 +812,8 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         
 def get_modified_csv(file_name):
      # Get the last-modified time in seconds since the epoch, convert to date and format as str
-    
-    last_modified = datetime.fromtimestamp(os.path.getmtime(file_name)).strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    utc_dt=datetime.fromtimestamp(os.path.getmtime(file_name))#utc_timestamp=1685112588
+    last_modified = utc_dt.astimezone(ZoneInfo("America/Chicago")).strftime("Last modified: %m/%d/%Y %H:%M:%S")
 
     # Format the datetime object as per the specified format
     # last_modified = last_modified_datetime.strftime("Last modified: %m/%d/%Y %H:%M:%S")
