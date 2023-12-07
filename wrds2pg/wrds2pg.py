@@ -678,8 +678,8 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
         os.makedirs(schema_dir)
     pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
 
-    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
-                                    rpath=rpath)
+    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
+    
     if os.path.exists(pq_file):
         pq_modified = get_modified_pq(pq_file)
     else:
@@ -723,7 +723,7 @@ def wrds_to_csv(table_name, schema, csv_file=None,
                 fix_missing=False, fix_cr=False, drop="", keep="", 
                 obs="", rename="", encoding="utf-8", 
                 sas_schema=None, 
-                sas_encoding=None, force=False, fpath=None, rpath=None):
+                sas_encoding=None):
         
     if not sas_schema:
         sas_schema = schema
@@ -737,12 +737,17 @@ def wrds_to_csv(table_name, schema, csv_file=None,
             os.makedirs(schema_dir)
         
         csv_file = Path(data_dir, schema, table_name).with_suffix('.csv.gz')
+        # Extract the date-time part from the modified string
+        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
+        date_time_str = modified.split("Last modified: ")[1]
+        print("last modified:"+ date_time_str)
+        # Convert date_time_str to a timestamp
+        modified_time = time.mktime(datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").timetuple())
+    
+        # Update the last-modified timestamp of the CSV file
+        os.utime(csv_file, (modified_time, modified_time))
         
         print("Saving data to " + str(csv_file) + ".")
-        
-        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,
-                                    rpath=rpath)
-        print("Last modified " + modified + ".")
 
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
