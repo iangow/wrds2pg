@@ -665,8 +665,6 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
                     sas_encoding=None, date_format="%Y%m%d", force=False, fpath=None, rpath=None):
 
     data_dir = os.path.expanduser(data_dir)
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
     
     if not sas_schema:
         sas_schema = schema
@@ -732,13 +730,6 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         
           
     if not csv_file:
-         
-        data_dir = os.path.expanduser(data_dir)
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        
-        if not alt_table_name:
-            alt_table_name = table_name
         
         schema_dir = Path(data_dir, schema)
     
