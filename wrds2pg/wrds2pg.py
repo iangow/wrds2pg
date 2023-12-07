@@ -777,7 +777,7 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         
 def get_modified_csv(file_name):
      # Get the last-modified time in seconds since the epoch
-    last_modified_timestamp = os.path.getmtime(file_path)
+    last_modified_timestamp = os.path.getmtime(file_name)
 
     # Convert it into a datetime object
     last_modified_datetime = datetime.fromtimestamp(last_modified_timestamp)
