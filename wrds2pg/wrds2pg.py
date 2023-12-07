@@ -738,6 +738,68 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
     csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
     return True
 
+def wrds_update_csv(table_name, schema,  
+        data_dir=os.getenv("DATA_DIR"),
+        host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
+        wrds_id=os.getenv("WRDS_ID"), rpath=None, fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
+        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True,
+        sas_schema=None, sas_encoding=None):
+        
+    if not encoding:
+        encoding = "utf-8"
+
+    if not sas_schema:
+        sas_schema = schema
+        
+    schema_dir = Path(data_dir, schema)
+    
+    if not os.path.exists(schema_dir):
+        os.makedirs(schema_dir)
+    
+    csv_file = Path(data_dir, schema, table_name).with_suffix('.csv.gz')
+    # Extract the date-time part from the modified string
+    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
+    
+    
+    
+    if os.path.exists(csv_file):
+        csv_modified = get_modified_csv(csv_file)
+    else:
+        csv_modified = ""
+        
+    if modified == csv_modified and not force and not fpath:
+        print(schema + "." + table_name + " already up to date")
+        return False
+    if force:
+        print("Forcing update based on user request.")
+    else:
+        print("Updated %s.%s is available." % (schema, table_name))
+        print("Getting from WRDS.\n")
+    print("Saving data to " + str(csv_file) + ".")    
+    date_time_str = modified.split("Last modified: ")[1]
+    # print("last modified:"+ date_time_str)
+    
+    # Convert date_time_str to a datetime object in UTC time zone
+    utc_dt = datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(timezone.utc)
+    # Convert to epoch time
+    
+    # Convert to epoch time
+    modified_time =  utc_dt.timestamp()
+    
+    p = get_wrds_process(table_name=table_name, 
+                     schema=sas_schema, wrds_id=wrds_id,
+                     drop=drop, keep=keep, fix_cr=fix_cr, 
+                     fix_missing=fix_missing, obs=obs, rename=rename,
+                     encoding=encoding, sas_encoding=sas_encoding)
+    with gzip.GzipFile(csv_file, mode='wb') as f:
+        shutil.copyfileobj(p, f)
+        
+    # Get the current time for access time
+    current_time = time.time()    
+    # Update the last-modified timestamp of the CSV file
+    os.utime(csv_file, (current_time, modified_time))    
+    return True
+
 def wrds_to_csv(table_name, schema, csv_file=None, 
                 wrds_id=os.getenv("WRDS_ID"),
                 data_dir=os.getenv("DATA_DIR"),
@@ -748,59 +810,6 @@ def wrds_to_csv(table_name, schema, csv_file=None,
         
     if not sas_schema:
         sas_schema = schema
-        
-          
-    if not csv_file:
-        
-        schema_dir = Path(data_dir, schema)
-    
-        if not os.path.exists(schema_dir):
-            os.makedirs(schema_dir)
-        
-        csv_file = Path(data_dir, schema, table_name).with_suffix('.csv.gz')
-        # Extract the date-time part from the modified string
-        modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding,rpath=rpath)
-        
-        
-       
-        if os.path.exists(csv_file):
-            csv_modified = get_modified_csv(csv_file)
-        else:
-            csv_modified = ""
-            
-        if modified == csv_modified and not force and not fpath:
-            print(schema + "." + table_name + " already up to date")
-            return False
-        if force:
-            print("Forcing update based on user request.")
-        else:
-            print("Updated %s.%s is available." % (schema, table_name))
-            print("Getting from WRDS.\n")
-        print("Saving data to " + str(csv_file) + ".")    
-        date_time_str = modified.split("Last modified: ")[1]
-        # print("last modified:"+ date_time_str)
-        
-        # Convert date_time_str to a datetime object in UTC time zone
-        utc_dt = datetime.strptime(date_time_str, "%m/%d/%Y %H:%M:%S").replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(timezone.utc)
-        # Convert to epoch time
-       
-        # Convert to epoch time
-        modified_time =  utc_dt.timestamp()
-    
-        
-        
-        p = get_wrds_process(table_name=table_name, 
-                         schema=sas_schema, wrds_id=wrds_id,
-                         drop=drop, keep=keep, fix_cr=fix_cr, 
-                         fix_missing=fix_missing, obs=obs, rename=rename,
-                         encoding=encoding, sas_encoding=sas_encoding)
-        with gzip.GzipFile(csv_file, mode='wb') as f:
-            shutil.copyfileobj(p, f)
-        # Get the current time for access time
-        current_time = time.time()    
-        # Update the last-modified timestamp of the CSV file
-        os.utime(csv_file, (current_time, modified_time))    
-        return True
 
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
