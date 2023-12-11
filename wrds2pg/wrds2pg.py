@@ -12,6 +12,10 @@ import gzip
 import tempfile
 import pyarrow.parquet as pq
 import pyarrow as pa
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+import os
+import time
 
 from sqlalchemy.engine import reflection
 from os import getenv
@@ -372,7 +376,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename="",
 
     return(df)
 
-def get_modified_str(table_name, sas_schema, wrds_id, encoding=None, rpath=None):
+def get_modified_str(table_name, sas_schema, wrds_id=wrds_id, encoding=None, rpath=None):
     
     if not encoding:
         encoding = "utf-8"
@@ -771,16 +775,21 @@ def get_modified_pq(file_name):
     return last_modified
 
 def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
-                   wrds_id=os.getenv("WRDS_ID"),date_format="%Y%m%d", 
+                   wrds_id=os.getenv("WRDS_ID"),
+                   modified='',
+                   date_format="%Y%m%d", 
                    row_group_size = 1048576):
     types = pq_types(table_name, sas_schema, wrds_id)
     names = types['names']
     dtypes = types['dtypes']
-    csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
+    csv_to_pq(csv_file, pq_file, names, dtypes, 
+              modified=modified, 
+              date_format=date_format)
 
 def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
               row_group_size = 1048576):
     with duckdb.connect() as con:
+        
         df = con.from_csv_auto(csv_file,
                                compression = "gzip",
                                date_format = date_format,
@@ -791,3 +800,147 @@ def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
         my_metadata = df_arrow.schema.with_metadata({b'last_modified': modified.encode()})
         to_write = df_arrow.cast(my_metadata)
         pq.write_table(to_write, pq_file, row_group_size = row_group_size)
+
+def modified_encode(modified):
+    date_time_str = modified.split("Last modified: ")[1]
+    mtimestamp = datetime \
+                .strptime(date_time_str, "%m/%d/%Y %H:%M:%S") \
+                .replace(tzinfo=ZoneInfo("America/Chicago")) \
+                .astimezone(timezone.utc) \
+                .timestamp()
+    return mtimestamp
+
+def modified_decode(modified_time):
+    utc_dt = datetime.fromtimestamp(modified_time)
+    last_modified = utc_dt \
+                      .astimezone(ZoneInfo("America/Chicago")) \
+                      .strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    return(last_modified)
+
+def get_modified_csv(file_name):
+    
+    utc_dt=datetime.fromtimestamp(os.path.getmtime(file_name))
+    last_modified = utc_dt \
+                      .astimezone(ZoneInfo("America/Chicago")) \
+                      .strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    return last_modified
+
+def set_modified_csv(file_name, last_modified):
+    mtimestamp = modified_encode(last_modified)
+    current_time = time.time()  
+    os.utime(file_name, times = (current_time, mtimestamp))    
+    return True
+
+def wrds_update_csv(table_name, schema,  
+                    data_dir=os.getenv("CSV_DIR"),
+                    wrds_id=os.getenv("WRDS_ID"), 
+                    force=False, fix_missing=False, fix_cr=False,
+                    drop="", keep="", obs="", rename="", alt_table_name=None,
+                    encoding=None,
+                    sas_schema=None, sas_encoding=None):
+    """Update a local CSV version of a WRDS table.
+
+    Parameters
+    ----------
+    table_name: 
+        Name of table (based on name of WRDS SAS file) 
+    
+    schema: 
+        Name of schema (normally the SAS library name)
+    
+    data_dir: 
+        Root directory of CSV data repository. 
+        The default is to use the environment value `CSV_DIR`.
+                    
+    wrds_id: string
+        The WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+    
+    force: Boolean
+        Forces update of file without checking status of WRDS SAS file.        
+        Default is `False`.
+        
+    fix_missing: Boolean
+        Default is `False`
+        
+    fix_cr: Boolean
+        Set to `True` when the SAS file contains unquoted carriage returns that would
+        otherwise produce `BadCopyFileFormat`.
+        Default is `False`.
+    
+    drop: string
+        SAS code snippet indicating variables to be dropped.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+        
+    keep:
+        
+    obs: Integer
+        Number of observations to import from SAS WRDS file.
+        Setting this to modest value (e.g., `obs=1000`) can be useful for testing
+        `wrds_update()` with large files.
+        
+    rename: string
+        SAS code snippet indicating variables to be renamed.
+        (e.g., rename="fee=mgt_fee" renames `fee` to `mgt_fee`).
+        
+    alt_table_name:
+    
+    encoding:
+    
+    sas_schema:
+        
+    sas_encoding:
+    
+    Returns
+    -------
+    
+    Examples
+    ----------
+    >>> wrds_update_csv("dsi", "crsp", drop="usdval usdcnt")
+    >>> wrds_update_csv("bankrupt", "audit", drop="match: closest: prior:")
+        
+    """
+
+    if not alt_table_name:
+        alt_table_name = table_name
+    
+    if not encoding:
+        encoding = "utf-8"
+
+    if not sas_schema:
+        sas_schema = schema
+        
+    schema_dir = Path(data_dir, schema)
+    
+    if not os.path.exists(schema_dir):
+        os.makedirs(schema_dir)
+    
+    csv_file = Path(data_dir, schema, alt_table_name).with_suffix('.csv.gz')
+    modified = get_modified_str(table_name, sas_schema, wrds_id)
+    
+    if os.path.exists(csv_file):
+        csv_modified = get_modified_csv(csv_file)
+    else:
+        csv_modified = ""
+    if modified == csv_modified and not force:
+        print(schema + "." + table_name + " already up to date")
+        return False
+    if force:
+        print("Forcing update based on user request.")
+    else:
+        print("Updated %s.%s is available." % (schema, table_name))
+        print("Getting from WRDS.\n")
+    wrds_to_csv(table_name=table_name, 
+                schema=schema, 
+                csv_file=csv_file,
+                wrds_id=wrds_id, 
+                fix_missing=fix_missing, 
+                fix_cr=fix_cr,
+                drop=drop, keep=keep,
+                obs=obs, rename=rename,
+                encoding=encoding,
+                sas_schema=sas_schema, 
+                sas_encoding=sas_encoding)
+    set_modified_csv(csv_file, modified)
+    return True
