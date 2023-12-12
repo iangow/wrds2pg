@@ -26,7 +26,7 @@ wrds_id = getenv("WRDS_ID")
 import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
-def get_process(sas_code, wrds_id=None, fpath=None):
+def get_process(sas_code, wrds_id=wrds_id, fpath=None):
     """Update a local CSV version of a WRDS table.
 
     Parameters
@@ -47,8 +47,19 @@ def get_process(sas_code, wrds_id=None, fpath=None):
     """
     if client:
         client.close()
-        
-    if wrds_id:
+
+    if fpath:
+
+        p=subprocess.Popen(['sas', '-stdio', '-noterminal'],
+                           stdin=subprocess.PIPE,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True)
+        p.stdin.write(sas_code)
+        p.stdin.close()
+
+        return p.stdout
+
+    elif wrds_id:
         """Function runs SAS code on WRDS server and
         returns result as pipe on stdout."""
         client.load_system_host_keys()
@@ -64,18 +75,7 @@ def get_process(sas_code, wrds_id=None, fpath=None):
         # indicate that we're not going to write to that channel anymore
         channel.shutdown_write()
         return stdout
-
-    elif fpath:
-
-        p=subprocess.Popen(['sas', '-stdio', '-noterminal'],
-                           stdin=subprocess.PIPE,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                           universal_newlines=True)
-        p.stdin.write(sas_code)
-        p.stdin.close()
-
-        return p.stdout
-
+  
 def code_row(row):
 
     """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS."""
