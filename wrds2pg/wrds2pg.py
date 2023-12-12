@@ -176,9 +176,12 @@ def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
 
     return(df)
 
-def make_sas_code(table_name, schema, wrds_id=None, fpath=None, \
-                  rpath=None, drop="", keep="", rename="", \
-                  alt_table_name=None, sas_schema=None):
+def make_sas_code(table_name, schema, wrds_id, fpath, \
+                  rpath, drop, keep, rename, \
+                  alt_table_name, sas_schema):
+    if not wrds_id:
+        wrds_id = os.environ['WRDS_ID']
+
     if not sas_schema:
         sas_schema = schema
         
@@ -209,17 +212,17 @@ def make_sas_code(table_name, schema, wrds_id=None, fpath=None, \
         run;
     """
 
-    if rename != '':
+    if rename:
         rename_str = "rename=(" + rename + ") "
     else:
         rename_str = ""
 
-    if drop != '':
+    if drop:
         drop_str = "drop=" + drop 
     else:
         drop_str = ""
         
-    if keep != '':
+    if keep:
         keep_str = "keep=" + keep 
     else:
         keep_str = ""
@@ -230,7 +233,7 @@ def make_sas_code(table_name, schema, wrds_id=None, fpath=None, \
                              
 
 def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
-                  rpath=None, drop="", keep="", rename="", return_sql=True, \
+                  rpath=None, drop=None, keep=None, rename=None, return_sql=True, \
                   alt_table_name=None, col_types=None, sas_schema=None):
                       
     if not alt_table_name:
@@ -272,8 +275,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
         return df
 
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
-                     drop="", keep="", fix_cr = False, 
-                     fix_missing = False, obs="", rename="",
+                     drop=None, keep=None, fix_cr = False, 
+                     fix_missing = False, obs=None, rename=None,
                      encoding=None, sas_encoding=None):
     if fix_cr:
         fix_missing = True;
@@ -294,7 +297,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     else:
         libname_stmt = ""
 
-    if rename != '':
+    if rename:
         rename_str = " rename=(" + rename + ")"
     else:
         rename_str = ""
@@ -304,7 +307,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     else:
         sas_encoding_str="(encoding='" + sas_encoding + "')"
 
-    if fix_missing or drop != '' or obs != '' or keep !='':
+    if fix_missing or drop or obs or keep:
         # If need to fix special missing values, then convert them to
         # regular missing values, then run PROC EXPORT
         if table_name == "dsf":
@@ -314,25 +317,25 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         else:
             dsf_fix = ""
 
-        if obs != "":
+        if obs:
             obs_str = " obs=" + str(obs)
         else:
             obs_str = ""
 
-        if drop != "":
-            drop_str = "drop=" + drop + " "
+        if drop:
+            drop_str = " drop=" + drop + " "
         else:
             drop_str = ""
         
-        if keep != "":
-            keep_str = "keep=" + keep + " "
+        if keep:
+            keep_str = " keep=" + keep + " "
         else:
             keep_str = ""
         
         if keep:
             print(keep_str)
         
-        if obs != '' or drop != '' or rename != '' or keep != '':
+        if obs or drop or rename or keep:
             sas_table = table_name + "(" + drop_str + keep_str + \
                                            obs_str + rename_str + ")"
         else:
@@ -401,8 +404,8 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     return sas_code        
     
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
-                     drop="", keep="", fix_cr = False, 
-                     fix_missing = False, obs="", rename="",
+                     drop=None, keep=None, fix_cr = False, 
+                     fix_missing = False, obs=None, rename=None,
                      encoding=None, sas_encoding=None):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
                                     rpath=rpath, fpath=fpath, schema=schema, 
@@ -413,8 +416,8 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
-def wrds_to_pandas(table_name, schema, wrds_id, rename="", 
-                   drop="", obs=None, encoding=None, fpath=None, rpath=None,
+def wrds_to_pandas(table_name, schema, wrds_id, rename=None, 
+                   drop=None, obs=None, encoding=None, fpath=None, rpath=None,
                    sas_schema=None):
 
     if not encoding:
@@ -489,7 +492,7 @@ def set_table_comment(table_name, schema, comment, engine):
 
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
-               drop="", obs="", rename="", keep="",
+               drop=None, obs=None, rename=None, keep=None,
                alt_table_name = None, encoding=None, col_types=None, create_roles=True,
                sas_schema=None, sas_encoding=None):
 
@@ -569,9 +572,14 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
             p.close()
     return True
 
-def wrds_update(table_name, schema, host=os.getenv("PGHOST"), dbname=os.getenv("PGDATABASE"), engine=None, 
-        wrds_id=os.getenv("WRDS_ID"), rpath=None, fpath=None, force=False, fix_missing=False, fix_cr=False, drop="", keep="", 
-        obs="", rename="", alt_table_name=None, encoding=None, col_types=None, create_roles=True,
+def wrds_update(table_name, schema, 
+                host=os.getenv("PGHOST"),
+                dbname=os.getenv("PGDATABASE"), 
+                engine=None, 
+                wrds_id=os.getenv("WRDS_ID"), 
+                rpath=None, fpath=None, force=False, 
+                fix_missing=False, fix_cr=False, drop=None, keep=None, 
+        obs=None, rename=None, alt_table_name=None, encoding=None, col_types=None, create_roles=True,
         sas_schema=None, sas_encoding=None):
           
     if not sas_schema:
@@ -742,15 +750,20 @@ def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"),
     pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
     return pq_file
 
-def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"), 
+def wrds_to_parquet(table_name, schema, 
+                    host=os.getenv("PGHOST"), 
                     dbname=os.getenv("PGDATABASE"),
-                    wrds_id=os.getenv("WRDS_ID"), 
+                    wrds_id=wrds_id, 
                     data_dir=os.getenv("DATA_DIR"),
                     memory_limit = "1GB",
-                    fix_missing=False, fix_cr=False, drop="", keep="", 
-                    obs="", rename="", alt_table_name=None, encoding="utf-8", 
-                    col_types=None, create_roles=True, sas_schema=None, 
-                    sas_encoding=None, date_format="%Y%m%d", force=False, fpath=None, rpath=None):
+                    fix_missing=False, 
+                    fix_cr=False, drop=None, keep=None, 
+                    obs=None, rename=None, alt_table_name=None,
+                    encoding="utf-8", 
+                    col_types=None, 
+                    create_roles=True, sas_schema=None, 
+                    sas_encoding=None, date_format="%Y%m%d",
+                    force=False, fpath=None, rpath=None):
     
     if not sas_schema:
         sas_schema = schema
@@ -799,8 +812,8 @@ def wrds_to_parquet(table_name, schema, host=os.getenv("PGHOST"),
 
 def wrds_to_csv(table_name, schema, csv_file, 
                 wrds_id=os.getenv("WRDS_ID"), 
-                fix_missing=False, fix_cr=False, drop="", keep="", 
-                obs="", rename="", encoding="utf-8", 
+                fix_missing=False, fix_cr=False, drop=None, keep=None, 
+                obs=None, rename=None, encoding="utf-8", 
                 sas_schema=None, 
                 sas_encoding=None):
           
@@ -810,12 +823,14 @@ def wrds_to_csv(table_name, schema, csv_file,
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
-                         fix_missing=fix_missing, obs=obs, rename=rename,
+                         fix_missing=fix_missing, 
+                         obs=obs, rename=rename,
                          encoding=encoding, sas_encoding=sas_encoding)
     with gzip.GzipFile(csv_file, mode='wb') as f:
         shutil.copyfileobj(p, f)
         
 def get_modified_pq(file_name):
+    
     if os.path.exists(file_name):
         md = pq.read_schema(file_name)
         schema_md = md.metadata
@@ -839,7 +854,8 @@ def wrds_csv_to_pq(table_name, schema, csv_file, pq_file,
     dtypes = types['dtypes']
     csv_to_pq(csv_file, pq_file, names, dtypes, 
               modified=modified, 
-              date_format=date_format)
+              date_format=date_format,
+              row_group_size=row_group_size)
 
 def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
               row_group_size = 1048576):
@@ -929,7 +945,8 @@ def wrds_update_csv(table_name, schema,
                     data_dir=os.getenv("CSV_DIR"),
                     wrds_id=os.getenv("WRDS_ID"), 
                     force=False, fix_missing=False, fix_cr=False,
-                    drop="", keep="", obs="", rename="", alt_table_name=None,
+                    drop=None, keep=None, obs=None, rename=None,
+                    alt_table_name=None,
                     encoding=None,
                     sas_schema=None, sas_encoding=None):
     """Update a local CSV version of a WRDS table.
