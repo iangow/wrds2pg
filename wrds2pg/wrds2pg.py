@@ -78,7 +78,6 @@ def get_process(sas_code, wrds_id=wrds_id, fpath=None):
   
 def code_row(row):
 
-    """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS."""
     """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS.
     Supported types that can be returned include FLOAT8, INT8, TEXT, TIMESTAMP, 
     TIME, and DATE.
@@ -170,7 +169,15 @@ def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
     df: 
         A Pandas data frame
     """    
+    p = get_process(sas_code=sas_code, 
+                    wrds_id=wrds_id,
+                    fpath=fpath)
+
+    if fpath:
         df = pd.read_csv(StringIO(p.read()))
+    elif wrds_id:
+        df = pd.read_csv(StringIO(p.read().decode(encoding)))
+        
     df.columns = map(str.lower, df.columns)
     p.close()
 
