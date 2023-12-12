@@ -144,7 +144,7 @@ def get_row_sql(row):
 
     return '"' + row['name'].lower() + '" ' + postgres_type
 
-def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
+def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
 
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame.
@@ -549,7 +549,9 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
         sql = r"""
             ALTER TABLE "%s"."%s"
             ALTER %s TYPE timestamp
-            USING regexp_replace(%s, '(\d{2}[A-Z]{3}\d{2,4}):?(.*$)', '\1 \2' )::timestamp""" % (schema, alt_table_name, var, var)
+            USING regexp_replace(%s,
+                                 '(\d{2}[A-Z]{3}\d{2,4}):?(.*$)', 
+                                 '\1 \2' )::timestamp""" % (schema, alt_table_name, var, var)
         process_sql(sql, engine)
 
     return res
@@ -879,17 +881,16 @@ def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
         to_write = df_arrow.cast(my_metadata)
         pq.write_table(to_write, pq_file, row_group_size = row_group_size)
 
-def modified_encode(modified):
-    date_time_str = modified.split("Last modified: ")[1]
-    mtimestamp = datetime \
-                .strptime(date_time_str, "%m/%d/%Y %H:%M:%S") \
-                .replace(tzinfo=ZoneInfo("America/Chicago")) \
-                .astimezone(timezone.utc) \
-                .timestamp()
-    return mtimestamp
+def modified_encode(last_modified):
+    date_time_str = last_modified.split("Last modified: ")[1]
+    mtime = datetime \
+            .strptime(date_time_str, "%m/%d/%Y %H:%M:%S") \
+            .replace(tzinfo=ZoneInfo("America/Chicago")) \
+            .astimezone(timezone.utc) \
+            .timestamp()
+    return mtime
 
-def modified_decode(modified_time):
-    utc_dt = datetime.fromtimestamp(modified_time)
+def modified_decode(mtime):
     """Decode mtime into last_modified string.
 
     Parameters
@@ -902,6 +903,7 @@ def modified_decode(modified_time):
     last_modified: string
         Last modified information
     """
+    utc_dt = datetime.fromtimestamp(mtime)
     last_modified = utc_dt \
                       .astimezone(ZoneInfo("America/Chicago")) \
                       .strftime("Last modified: %m/%d/%Y %H:%M:%S")
