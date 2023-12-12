@@ -27,7 +27,24 @@ import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
 def get_process(sas_code, wrds_id=None, fpath=None):
+    """Update a local CSV version of a WRDS table.
 
+    Parameters
+    ----------
+    sas_code: 
+        SAS code to be run to yield output. 
+                      
+    wrds_id: string
+        Optional WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+    
+    fpath: 
+        Optional path to a local SAS file.
+    
+    Returns
+    -------
+    The STDOUT component of the process as a stream.
+    """
     if client:
         client.close()
         
@@ -62,7 +79,19 @@ def get_process(sas_code, wrds_id=None, fpath=None):
 def code_row(row):
 
     """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS."""
+    """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS.
+    Supported types that can be returned include FLOAT8, INT8, TEXT, TIMESTAMP, 
+    TIME, and DATE.
 
+    Parameters
+    ----------
+    row: A row from a Pandas data frame 
+
+    Returns:
+    -------
+    type:
+        The PostgreSQL type inferred for the row    
+    """
     format_ = row['format']
     formatd = row['formatd']
     formatl = row['formatl']
@@ -90,13 +119,26 @@ def code_row(row):
     else:
         return 'text'
 
-################################################
-# 1. Get format of variables on WRDS table     #
-################################################
-# SAS code to extract information about the datatypes of the SAS data.
-# Note that there are some date formates that don't work with this code.
 def get_row_sql(row):
-    """Function to get SQL to create column from row in PROC CONTENTS."""
+    """Function to get SQL to create column from row in PROC CONTENTS.
+    
+    Parameters
+    ----------
+    row: A row from a Pandas data frame 
+        Row should contain values for `postgres_type` and `name`.
+
+    Returns:
+    -------
+    row_sql: string
+        The SQL for a row, a component of a CREATE TABLE statement.
+
+    TODO:
+    _______
+
+     - Remove row['name'].lower() to allow for non-lowercase names.
+     - Investigate necessity of converting `timestamp` to `text`.
+    
+    """
     postgres_type = row['postgres_type']
     if postgres_type == 'timestamp':
         postgres_type = 'text'
@@ -106,15 +148,28 @@ def get_row_sql(row):
 def sas_to_pandas(sas_code, wrds_id, fpath=None, encoding=None):
 
     """Function that runs SAS code on WRDS or local server
-    and returns a Pandas data frame."""
-    if not encoding:
-        encoding = "utf-8"
-    
-    p = get_process(sas_code, wrds_id, fpath)
+    and returns a Pandas data frame.
 
-    if wrds_id:
-        df = pd.read_csv(StringIO(p.read().decode(encoding)))
-    else:
+     Parameters
+    ----------
+    sas_code: string
+        SAS code to be run to yield output. 
+                      
+    wrds_id: string
+        Optional WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+    
+    fpath: 
+        Optional path to a local SAS file.
+
+    encoding: string
+        Encoding to be used to decode output from SAS.
+    
+    Returns
+    -------
+    df: 
+        A Pandas data frame
+    """    
         df = pd.read_csv(StringIO(p.read()))
     df.columns = map(str.lower, df.columns)
     p.close()
@@ -812,13 +867,36 @@ def modified_encode(modified):
 
 def modified_decode(modified_time):
     utc_dt = datetime.fromtimestamp(modified_time)
+    """Decode mtime into last_modified string.
+
+    Parameters
+    ----------
+    mtime:
+        Modified time returned by operating system (epoch time)
+    
+    Returns
+    -------
+    last_modified: string
+        Last modified information
+    """
     last_modified = utc_dt \
                       .astimezone(ZoneInfo("America/Chicago")) \
                       .strftime("Last modified: %m/%d/%Y %H:%M:%S")
     return(last_modified)
 
 def get_modified_csv(file_name):
+    """Get last modified value for a local file using mtime.
+
+    Parameters
+    ----------
+    file_name: string
+        Name of file for which information is sought.
     
+    Returns
+    -------
+    last_modified: string
+        Last modified information
+    """
     utc_dt=datetime.fromtimestamp(os.path.getmtime(file_name))
     last_modified = utc_dt \
                       .astimezone(ZoneInfo("America/Chicago")) \
@@ -826,6 +904,22 @@ def get_modified_csv(file_name):
     return last_modified
 
 def set_modified_csv(file_name, last_modified):
+    """Set last modified value for a local file using mtime.
+
+    Parameters
+    ----------
+    file_name: string
+        Name of file to be modified
+    
+    last_modified: 
+        String containing last modified information
+    
+    
+    Returns
+    -------
+    result: boolean
+        True if function succeeds.
+    """
     mtimestamp = modified_encode(last_modified)
     current_time = time.time()  
     os.utime(file_name, times = (current_time, mtimestamp))    
