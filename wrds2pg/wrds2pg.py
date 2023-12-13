@@ -348,15 +348,6 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         else:
             sas_table = table_name
 
-        if table_name == "fund_names":
-            fund_names_fix = """
-                proc sql;
-                    DELETE FROM %s%s
-                    WHERE prxmatch('\\D', first_offer_dt) ge 1;
-                quit;""" % (wrds_id, table_name)
-        else:
-            fund_names_fix = ""
-
         # Cut table name to no more than 32 characters
         # (A SAS limitation)
         new_table = "%s%s" % (schema, table_name)
@@ -389,14 +380,11 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                 %s
             run;
 
-            * fund_names_fix;
-            %s
-
             proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
         sas_code = sas_template % (libname_stmt, new_table, 
                                    schema, sas_table, sas_encoding_str, dsf_fix,
-                                   fix_cr_code, fix_missing_str, fund_names_fix, new_table)
+                                   fix_cr_code, fix_missing_str, new_table)
                               
     else:
 
