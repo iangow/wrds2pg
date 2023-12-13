@@ -183,9 +183,9 @@ def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
 
     return(df)
 
-def make_sas_code(table_name, schema, wrds_id, fpath, \
-                  rpath, drop, keep, rename, \
-                  alt_table_name, sas_schema):
+def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None, \
+                  rpath=None, drop=None, keep=None, rename=None, \
+                  alt_table_name=None, sas_schema=None):
     if not wrds_id:
         wrds_id = os.environ['WRDS_ID']
 
