@@ -118,32 +118,6 @@ def code_row(row):
     else:
         return 'text'
 
-def get_row_sql(row):
-    """Function to get SQL to create column from row in PROC CONTENTS.
-    
-    Parameters
-    ----------
-    row: A row from a Pandas data frame 
-        Row should contain values for `postgres_type` and `name`.
-
-    Returns:
-    -------
-    row_sql: string
-        The SQL for a row, a component of a CREATE TABLE statement.
-
-    TODO:
-    _______
-
-     - Remove row['name'].lower() to allow for non-lowercase names.
-     - Investigate necessity of converting `timestamp` to `text`.
-    
-    """
-    postgres_type = row['postgres_type']
-    if postgres_type == 'timestamp':
-        postgres_type = 'text'
-
-    return '"' + row['name'].lower() + '" ' + postgres_type
-
 def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
 
     """Function that runs SAS code on WRDS or local server
@@ -256,7 +230,6 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
     
     # Make all variable names lower case, get
     # inferred types, then set explicit types if given
-    # Identify the datetime fields. These need special handling.
     names = [name.lower() for name in df['name']]
     types = df.apply(code_row, axis=1)
     col_types_inferred = dict(zip(names, types))
@@ -267,15 +240,12 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
     rows_str = ", ".join(['"' + name + '" ' + 
                           col_types_inferred[name] for name in names])
     
-    datetime_cols = [key for key in col_types_inferred
-                     if col_types_inferred[key]=="datetime"]
-    
     make_table_sql = 'CREATE TABLE "' + schema + '"."' + alt_table_name + '" (' + \
                       rows_str + ')'
     
     if return_sql:
         return {"sql":make_table_sql, 
-                "datetimes":datetime_cols, 
+                "names":names,
                 "col_types":col_types_inferred}
     else:
         df['name'] = names
@@ -285,8 +255,15 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop=None, keep=None, fix_cr = False, 
                      fix_missing = False, obs=None, where=None,
-                     col_types=None,
                      rename=None, encoding=None, sas_encoding=None):
+    
+    make_table_data = get_table_sql(table_name=table_name, schema=schema, 
+                                    wrds_id=wrds_id,
+                                    fpath=fpath, rpath=rpath, 
+                                    drop=drop, rename=rename, keep=keep)
+
+    col_types = make_table_data["col_types"]
+    
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
@@ -348,12 +325,21 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         # (A SAS limitation)
         new_table = "%s%s" % (schema, table_name)
         new_table = new_table[0:min(len(new_table), 32)]
-        
+
         if col_types:
+            # print(col_types)
             unformat = [key for key in col_types if col_types[key] 
-                          not in ['date', 'time', 'datetime']]
+                          not in ['date', 'time', 'timestamp']]
             unformat_str = ' '.join([ 'attrib ' + var + ' format=;'
                                        for var in unformat])
+
+            dates = [key for key in col_types if col_types[key]=='date']
+            dates_str = ' '.join([ 'attrib ' + var + ' format=YYMMDD10.;'
+                                       for var in dates])
+
+            timestamps = [key for key in col_types if col_types[key]=='timestamp']
+            timestamps_str = ' '.join([ 'attrib ' + var + ' format=E8601DT19.;'
+                                       for var in timestamps])
         else:
             unformat_str = ""
         
@@ -382,6 +368,8 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             proc datasets lib=work;
                 modify %s; 
                     %s
+                    %s
+                    %s
             run;
 
             proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
@@ -389,7 +377,9 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         sas_code = sas_template % (libname_stmt, new_table, 
                                    schema, sas_table, sas_encoding_str,
                                    fix_cr_code, fix_missing_str, where_str,
-                                   new_table, unformat_str, new_table)
+                                   new_table,
+                                   unformat_str, dates_str, timestamps_str,
+                                   new_table)
                                    
                               
     else:
@@ -407,14 +397,12 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop=None, keep=None, fix_cr = False, 
                      fix_missing = False, obs=None, rename=None, where=None,
-                     col_types=None,
                      encoding=None, sas_encoding=None):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
                                     rpath=rpath, fpath=fpath, schema=schema, 
                                     drop=drop, rename=rename, keep=keep, 
                                     fix_cr=fix_cr, fix_missing=fix_missing, 
                                     obs=obs, where=where,
-                                    col_types=col_types,
                                     encoding=encoding, sas_encoding=sas_encoding)
     
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
@@ -533,8 +521,6 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
             process_sql("GRANT USAGE ON SCHEMA " + schema + " TO " + 
                          schema + "_access", engine)
     process_sql(make_table_data["sql"], engine)
-
-    col_types = make_table_data["col_types"]
     
     now = strftime("%H:%M:%S", gmtime())
     print("Beginning file import at %s." % now)
@@ -543,22 +529,11 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                  schema=sas_schema, wrds_id=wrds_id,
                                  drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
                                  obs=obs, rename=rename, where=where,
-                                 col_types=col_types,
                                  sas_encoding=sas_encoding)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
     now = strftime("%H:%M:%S", gmtime())
     print("Completed file import at %s." % now)
-
-    for var in make_table_data["datetimes"]:
-        print("Fixing %s" % var)
-        sql = r"""
-            ALTER TABLE "%s"."%s"
-            ALTER %s TYPE timestamp
-            USING regexp_replace(%s,
-                                 '(\d{2}[A-Z]{3}\d{2,4}):?(.*$)', 
-                                 '\1 \2' )::timestamp""" % (schema, alt_table_name, var, var)
-        process_sql(sql, engine)
 
     return res
 
@@ -728,27 +703,6 @@ def get_wrds_tables(schema, wrds_id=None):
     wrds_engine.dispose()
     return table_list
 
-def get_contents(table_name, schema, wrds_id=None):
-        
-    sas_code = make_sas_code(table_name=table_name, \
-                             schema=schema, wrds_id=wrds_id)
-    
-    # Run the SAS code on the WRDS server and get the result
-    df = sas_to_pandas(sas_code, wrds_id)
-    df['postgres_type'] = df.apply(code_row, axis=1)
-    df['name'] = [name.lower() for name in df['name']]
-    return df
-
-def pq_types(table_name, sas_schema, wrds_id, col_types):
-    # Get names and data types
-    df_info = get_contents(table_name, sas_schema, wrds_id)
-    names = [name for name in df_info['name']]
-    dtypes = dict(zip(df_info['name'], df_info['postgres_type']))
-    if col_types:
-        for key in col_types.keys():
-            dtypes[key] = col_types[key]
-    return {'dtypes': dtypes, 'names': names}
-
 def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"), 
                 sas_schema=None):
     data_dir = os.path.expanduser(data_dir)
@@ -765,7 +719,7 @@ def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"),
     pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
     return pq_file
 
-def wrds_to_parquet(table_name, schema, 
+def wrds_update_pq(table_name, schema, 
                     host=os.getenv("PGHOST"), 
                     dbname=os.getenv("PGDATABASE"),
                     wrds_id=wrds_id, 
@@ -777,9 +731,8 @@ def wrds_to_parquet(table_name, schema,
                     encoding="utf-8", 
                     col_types=None, 
                     where=None,
-                    unformat=None,
                     create_roles=True, sas_schema=None, 
-                    sas_encoding=None, date_format="%Y%m%d",
+                    sas_encoding=None,
                     force=False, fpath=None, rpath=None):
     
     if not sas_schema:
@@ -806,11 +759,6 @@ def wrds_to_parquet(table_name, schema,
         print("Updated %s.%s is available." % (schema, alt_table_name))
         print("Getting from WRDS.\n")
     
-    types = pq_types(table_name=table_name, sas_schema=sas_schema, 
-                     wrds_id=wrds_id, col_types=col_types)
-    names = types['names']
-    dtypes = types['dtypes']
-
     print("Saving data to temporary CSV.")
     csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
     wrds_to_csv(table_name, schema, csv_file, 
@@ -821,17 +769,39 @@ def wrds_to_parquet(table_name, schema,
                 obs=obs, rename=rename,
                 encoding=encoding, 
                 where=where,
-                col_types=col_types,
                 sas_schema=sas_schema, 
                 sas_encoding=sas_encoding)
     print("Converting temporary CSV to parquet.")
-    csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format)
+    make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
+                                    schema=sas_schema, 
+                                    drop=drop, rename=rename, keep=keep, 
+                                    col_types=col_types)
+
+    col_types = make_table_data["col_types"]
+    names = make_table_data["names"]
+    csv_to_pq(csv_file, pq_file, names, col_types, modified)
     return True
+
+def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
+                   col_types=None,
+                   wrds_id=os.getenv("WRDS_ID"),
+                   modified='',
+                   row_group_size = 1048576):
+    make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
+                                    schema=sas_schema, 
+                                    drop=drop, rename=rename, keep=keep, 
+                                    col_types=col_types)
+
+    col_types = make_table_data["col_types"]
+    names = make_table_data["names"]
+    csv_to_pq(csv_file, pq_file, names, col_types, 
+              modified=modified, 
+              row_group_size=row_group_size)
 
 def wrds_to_csv(table_name, schema, csv_file, 
                 wrds_id=os.getenv("WRDS_ID"), 
                 fix_missing=False, fix_cr=False, drop=None, keep=None, 
-                obs=None, rename=None, where=None, col_types=None,
+                obs=None, rename=None, where=None,
                 encoding="utf-8", 
                 sas_schema=None, sas_encoding=None):
           
@@ -843,7 +813,7 @@ def wrds_to_csv(table_name, schema, csv_file,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
                          fix_missing=fix_missing, 
                          obs=obs, rename=rename,
-                         where=where, col_types=col_types,
+                         where=where,
                          encoding=encoding, sas_encoding=sas_encoding)
     with gzip.GzipFile(csv_file, mode='wb') as f:
         shutil.copyfileobj(p, f)
@@ -864,29 +834,14 @@ def get_modified_pq(file_name):
         last_modified = ''
     return last_modified
 
-def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
-                   wrds_id=os.getenv("WRDS_ID"),
-                   modified='',
-                   date_format="%Y%m%d", 
-                   row_group_size = 1048576):
-    types = pq_types(table_name, sas_schema, wrds_id)
-    names = types['names']
-    dtypes = types['dtypes']
-    csv_to_pq(csv_file, pq_file, names, dtypes, 
-              modified=modified, 
-              date_format=date_format,
-              row_group_size=row_group_size)
-
-def csv_to_pq(csv_file, pq_file, names, dtypes, modified, date_format,
+def csv_to_pq(csv_file, pq_file, names, col_types, modified,
               row_group_size = 1048576):
     with duckdb.connect() as con:
-        
         df = con.from_csv_auto(csv_file,
                                compression = "gzip",
-                               date_format = date_format,
                                names = names,
                                header = True,
-                               dtype = dtypes)
+                               dtype = col_types)
         df_arrow = df.arrow()
         my_metadata = df_arrow.schema.with_metadata({b'last_modified': modified.encode()})
         to_write = df_arrow.cast(my_metadata)
@@ -967,7 +922,7 @@ def wrds_update_csv(table_name, schema,
                     force=False, fix_missing=False, fix_cr=False,
                     drop=None, keep=None, obs=None, rename=None,
                     where=None, alt_table_name=None,
-                    encoding=None, col_types=None,
+                    encoding=None,
                     sas_schema=None, sas_encoding=None):
     """Update a local CSV version of a WRDS table.
 
@@ -1073,7 +1028,6 @@ def wrds_update_csv(table_name, schema,
                 drop=drop, keep=keep,
                 obs=obs, rename=rename,
                 where=where,
-                col_types=col_types,
                 encoding=encoding,
                 sas_schema=sas_schema, 
                 sas_encoding=sas_encoding)
