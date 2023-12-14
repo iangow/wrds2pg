@@ -564,14 +564,123 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
 
 def wrds_update(table_name, schema, 
                 host=os.getenv("PGHOST"),
+                wrds_id=os.getenv("WRDS_ID"), 
                 dbname=os.getenv("PGDATABASE"), 
                 engine=None, 
-                wrds_id=os.getenv("WRDS_ID"), 
-                rpath=None, fpath=None, force=False, 
+                force=False, 
                 fix_missing=False, fix_cr=False, drop=None, keep=None, 
-                obs=None, where=None, rename=None, alt_table_name=None, 
-                encoding=None, col_types=None, create_roles=True,
-                sas_schema=None, sas_encoding=None):
+                obs=None, rename=None, where=None,  
+                alt_table_name=None, 
+                col_types=None, create_roles=True,
+                encoding=None, sas_schema=None, sas_encoding=None,
+                rpath=None, fpath=None,):
+    """Update a PostgreSQL table using WRDS SAS data.
+
+    Parameters
+    ----------
+    table_name: 
+        Name of table (based on name of WRDS SAS file).
+    
+    schema: 
+        Name of schema (normally the SAS library name).
+
+    wrds_id: string [Optional]
+        The WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+    
+    host: string [Optional]
+        Host name for the PostgreSQL server.
+        The default is to use the environment value `PGHOST`.
+
+    dbname: string [Optional]
+        Name for the PostgreSQL database.
+        The default is to use the environment value `PGDATABASE`.
+
+    engine: SQLAlchemy engine [Optional]
+        Allows user to supply an existing database engine.
+
+    force: Boolean [Optional]
+        Forces update of file without checking status of WRDS SAS file.        
+        Default is `False`.
+        
+    fix_missing: Boolean [Optional]
+        Default is `False`.
+        This converts special missing values to simple missing values.
+        
+    fix_cr: Boolean [Optional]
+        Set to `True` when the SAS file contains unquoted carriage returns that would
+        otherwise produce `BadCopyFileFormat`.
+        Default is `False`.
+    
+    drop: string [Optional]
+        SAS code snippet indicating variables to be dropped.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+        
+    keep: string [Optional]
+        SAS code snippet indicating variables to be retained.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+            
+    obs: Integer [Optional]
+        SAS code snippet indicating number of observations to import from SAS file.
+        Setting this to modest value (e.g., `obs=1000`) can be useful for testing
+        `wrds_update()` with large files.
+        
+    rename: string [Optional]
+        SAS code snippet indicating variables to be renamed.
+        (e.g., rename="fee=mgt_fee" renames `fee` to `mgt_fee`).
+        
+    where: string [Optional]
+        SAS code snippet indicating observations to be retained.
+        See examples below.
+    
+    alt_table_name: string [Optional]
+        Basename of CSV file. Used when file should have different name from table_name.
+
+    col_types: Dict [Optional]
+        Dictionary of PostgreSQL data types to be used when importing data to PostgreSQL or writing to Parquet files.
+        For Parquet files, conversion from PostgreSQL to PyArrow types is handled by DuckDB.
+        Only a subset of columns needs to be supplied.
+        Supplied types should be compatible with data emitted by SAS's PROC EXPORT 
+        (i.e., one can't "fix" arbitrary type issues using this argument).
+        For example, `col_types = {'permno':'integer', 'permco':'integer'`.
+
+    create_roles: boolean
+        Indicates whether database roles should be created for schema.
+        Two roles are created.
+        One role is for ownership (e.g., `crsp` for `crsp.dsf`) with write access.
+        One role is read-onluy for access (e.g., `crsp_access`).
+        This is only useful if you are running a shared server.
+        Default is `True`.
+        
+    encoding: string  [Optional]
+        Encoding to be used for text emitted by SAS.
+    
+    sas_schema: string [Optional]
+        WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
+        Data obtained from sas_schema is stored in schema.
+        
+    sas_encoding: string
+        Encoding of the SAS data file.
+
+    rpath: string [Optional]
+        Path to local SAS file. Requires local SAS.
+
+    fpath: string [Optional]
+        Path to local SAS file. Requires local SAS.
+    
+    Returns
+    -------
+    Boolean indicating function reached the end.
+    This should mean that a parquet file was created.
+    
+    Examples
+    ----------
+    >>> wrds_update("dsi", "crsp", drop="usdval usdcnt")
+    >>> wrds_update("feed21_bankruptcy_notification", 
+                        "audit", drop="match: closest: prior:")
+    """
           
     if not sas_schema:
         sas_schema = schema
@@ -720,21 +829,104 @@ def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"),
     return pq_file
 
 def wrds_update_pq(table_name, schema, 
-                    host=os.getenv("PGHOST"), 
-                    dbname=os.getenv("PGDATABASE"),
-                    wrds_id=wrds_id, 
-                    data_dir=os.getenv("DATA_DIR"),
-                    memory_limit = "1GB",
-                    fix_missing=False, 
-                    fix_cr=False, drop=None, keep=None, 
-                    obs=None, rename=None, alt_table_name=None,
-                    encoding="utf-8", 
-                    col_types=None, 
-                    where=None,
-                    create_roles=True, sas_schema=None, 
-                    sas_encoding=None,
-                    force=False, fpath=None, rpath=None):
+                   wrds_id=wrds_id, 
+                   data_dir=os.getenv("DATA_DIR"),
+                   force=False, 
+                   fix_missing=False, 
+                   fix_cr=False, drop=None, keep=None, 
+                   obs=None, rename=None, 
+                   where=None,
+                   alt_table_name=None,
+                   col_types=None,
+                   encoding="utf-8", 
+                   sas_schema=None, 
+                   sas_encoding=None):
+    """Update a local parquet version of a WRDS table.
+
+    Parameters
+    ----------
+    table_name: 
+        Name of table (based on name of WRDS SAS file).
     
+    schema: 
+        Name of schema (normally the SAS library name).
+
+    wrds_id: string [Optional]
+        The WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+    
+    data_dir: string [Optional]
+        Root directory of CSV data repository. 
+        The default is to use the environment value `DATA_DIR`.
+    
+    force: Boolean [Optional]
+        Forces update of file without checking status of WRDS SAS file.        
+        Default is `False`.
+        
+    fix_missing: Boolean [Optional]
+        Default is `False`.
+        This converts special missing values to simple missing values.
+        
+    fix_cr: Boolean [Optional]
+        Set to `True` when the SAS file contains unquoted carriage returns that would
+        otherwise produce `BadCopyFileFormat`.
+        Default is `False`.
+    
+    drop: string [Optional]
+        SAS code snippet indicating variables to be dropped.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+        
+    keep: string [Optional]
+        SAS code snippet indicating variables to be retained.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+            
+    obs: Integer [Optional]
+        SAS code snippet indicating number of observations to import from SAS file.
+        Setting this to modest value (e.g., `obs=1000`) can be useful for testing
+        `wrds_update()` with large files.
+        
+    rename: string [Optional]
+        SAS code snippet indicating variables to be renamed.
+        (e.g., rename="fee=mgt_fee" renames `fee` to `mgt_fee`).
+        
+    where: string [Optional]
+        SAS code snippet indicating observations to be retained.
+        See examples below.
+    
+    alt_table_name: string [Optional]
+        Basename of CSV file. Used when file should have different name from table_name.
+
+    col_types: Dict [Optional]
+        Dictionary of PostgreSQL data types to be used when importing data to PostgreSQL or writing to Parquet files.
+        For Parquet files, conversion from PostgreSQL to PyArrow types is handled by DuckDB.
+        Only a subset of columns needs to be supplied.
+        Supplied types should be compatible with data emitted by SAS's PROC EXPORT 
+        (i.e., one can't "fix" arbitrary type issues using this argument).
+        For example, `col_types = {'permno':'integer', 'permco':'integer'`.
+        
+    encoding: string  [Optional]
+        Encoding to be used for text emitted by SAS.
+    
+    sas_schema: string [Optional]
+        WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
+        Data obtained from sas_schema is stored in schema.
+        
+    sas_encoding: string
+        Encoding of the SAS data file.
+    
+    Returns
+    -------
+    Boolean indicating function reached the end.
+    This should mean that a parquet file was created.
+    
+    Examples
+    ----------
+    >>> wrds_update_csv("dsi", "crsp", drop="usdval usdcnt")
+    >>> wrds_update_csv("feed21_bankruptcy_notification", 
+                        "audit", drop="match: closest: prior:")
+    """
     if not sas_schema:
         sas_schema = schema
         
@@ -746,7 +938,7 @@ def wrds_update_pq(table_name, schema,
                 
     modified = get_modified_str(table_name=table_name, 
                                 sas_schema=sas_schema, wrds_id=wrds_id, 
-                                encoding=encoding, rpath=rpath)
+                                encoding=encoding)
     
     pq_modified = get_modified_pq(pq_file)
         
@@ -917,77 +1109,90 @@ def set_modified_csv(file_name, last_modified):
     return True
 
 def wrds_update_csv(table_name, schema,  
-                    data_dir=os.getenv("CSV_DIR"),
                     wrds_id=os.getenv("WRDS_ID"), 
+                    data_dir=os.getenv("CSV_DIR"),
                     force=False, fix_missing=False, fix_cr=False,
                     drop=None, keep=None, obs=None, rename=None,
                     where=None, alt_table_name=None,
                     encoding=None,
                     sas_schema=None, sas_encoding=None):
-    """Update a local CSV version of a WRDS table.
+    """Update a local gzipped CSV version of a WRDS table.
 
     Parameters
     ----------
     table_name: 
-        Name of table (based on name of WRDS SAS file) 
+        Name of table (based on name of WRDS SAS file).
     
     schema: 
-        Name of schema (normally the SAS library name)
-    
-    data_dir: 
-        Root directory of CSV data repository. 
-        The default is to use the environment value `CSV_DIR`.
-                    
-    wrds_id: string
+        Name of schema (normally the SAS library name).
+
+    wrds_id: string [Optional]
         The WRDS ID to be use to access WRDS SAS. 
         Default is to use the environment value `WRDS_ID`
     
-    force: Boolean
+    data_dir: string [Optional]
+        Root directory of CSV data repository. 
+        The default is to use the environment value `CSV_DIR`.
+    
+    force: Boolean [Optional]
         Forces update of file without checking status of WRDS SAS file.        
         Default is `False`.
         
-    fix_missing: Boolean
-        Default is `False`
+    fix_missing: Boolean [Optional]
+        Default is `False`.
+        This converts special missing values to simple missing values.
         
-    fix_cr: Boolean
+    fix_cr: Boolean [Optional]
         Set to `True` when the SAS file contains unquoted carriage returns that would
         otherwise produce `BadCopyFileFormat`.
         Default is `False`.
     
-    drop: string
+    drop: string [Optional]
         SAS code snippet indicating variables to be dropped.
         Multiple variables should be separated by spaces and SAS wildcards can be used.
         See examples below.
         
-    keep:
-        
-    where:
-        
-    obs: Integer
-        Number of observations to import from SAS WRDS file.
+    keep: string [Optional]
+        SAS code snippet indicating variables to be retained.
+        Multiple variables should be separated by spaces and SAS wildcards can be used.
+        See examples below.
+            
+    obs: Integer [Optional]
+        SAS code snippet indicating number of observations to import from SAS file.
         Setting this to modest value (e.g., `obs=1000`) can be useful for testing
         `wrds_update()` with large files.
         
-    rename: string
+    rename: string [Optional]
         SAS code snippet indicating variables to be renamed.
         (e.g., rename="fee=mgt_fee" renames `fee` to `mgt_fee`).
         
-    alt_table_name:
+    where: string [Optional]
+        SAS code snippet indicating observations to be retained.
+        See examples below.
     
-    encoding:
+    alt_table_name: string [Optional]
+        Basename of CSV file. Used when file should have different name from table_name.
     
-    sas_schema:
+    encoding: string  [Optional]
+        Encoding to be used for text emitted by SAS.
+    
+    sas_schema: string [Optional]
+        WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
+        Data obtained from sas_schema is stored in schema.
         
-    sas_encoding:
+    sas_encoding: string
+        Encoding of the SAS data file.
     
     Returns
     -------
+    Boolean indicating function reached the end.
+    This should mean that a CSV file was created.
     
     Examples
     ----------
     >>> wrds_update_csv("dsi", "crsp", drop="usdval usdcnt")
-    >>> wrds_update_csv("bankrupt", "audit", drop="match: closest: prior:")
-        
+    >>> wrds_update_csv("feed21_bankruptcy_notification", 
+                        "audit", drop="match: closest: prior:")
     """
 
     if not alt_table_name:
