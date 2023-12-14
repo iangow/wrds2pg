@@ -6,10 +6,10 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="1.0.28",
+    version="1.0.29",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
-    description="Import WRDS tables or SAS data into PostgreSQL.",
+    description="Convert WRDS or local SAS data to PostgreSQL, parquet, or CSV.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/iangow/wrds2pg/",
