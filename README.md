@@ -1,7 +1,13 @@
-# WRDS (or SAS) to PostgreSQL
-This software has two functions:
-- Download tables from [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) and feed them to a PostgreSQL database. (Requires access to WRDS and to the data in question.)
-- Import a SAS file (`*.sas7dbat`) into a PostgreSQL database.
+# Library to convert WRDS SAS data
+
+This package was created to convert [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) SAS data to modern data formats.
+This package has three major functions, one for each of three popular data formats.
+
+ - `wrds_update()`: Imports WRDS SAS data into a PostgreSQL database.
+ - `wrds_update_pq()`: Converts WRDS SAS data to parquet files.
+ - `wrds_update_csv()`: Converts WRDS SAS data to gzipped CSV files.
+
+This package was primarily designed to handle WRDS data, but some support is provided for importing a local SAS file (`*.sas7dbat`) into a PostgreSQL database.
 
 ## Requirements
 
@@ -21,7 +27,7 @@ cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/a
 Use an empty passphrase in setting up the key so that the scripts can run without user intervention.
 
 ### 3. PostgreSQL
-You should have a PostgreSQL database to store the data.
+For the `wrds_update()` function, you should have write access to a PostgreSQL database to store the data.
 
 ### 4. Environment variables
 
@@ -31,8 +37,10 @@ Environment variables that the code can use include:
 - `PGUSER`: Your username on the PostgreSQL database.
 - `PGHOST`: Where the PostgreSQL database is to be found (this will be `localhost` if its on the same machine as you're running the code on)
 - `WRDS_ID`: Your [WRDS](https://wrds-web.wharton.upenn.edu/wrds/) ID.
+- `DATA_DIR`: The local repository for parquet files.
+- `CSV_DIR`: The local repository for compressed CSV files.
 
-I set these environment variables in `~/.profile`:
+Once can set these environment variables in (say) `~/.zprofile`:
 
 ```
 export PGHOST="localhost"
@@ -49,7 +57,7 @@ Two arguments `table_name` and `schema` are required.
 Set `WRDS_ID`  using either `wrds_id=your_wrds_id` in the function call or the environment variable `WRDS_ID`.
 
 ### 2. Environment variables
-The software will use the environment variables `PGHOST`, `PGDATABASE`, and `PGUSER` if you If you have set them. Otherwise, you need to provide values as arguments to `wrds_udpate()`. Default `PGPORT` is`5432`.
+The `wrds_udpate()` function will use the environment variables `PGHOST`, `PGDATABASE`, and `PGUSER` if you If you have set them. Otherwise, you need to provide values as arguments to `wrds_udpate()`. Default `PGPORT` is`5432`.
 
 ### 3. Table settings
 To tailor your request, specify the following arguments:
@@ -102,4 +110,4 @@ wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7dbat")
 
 ### Report bugs
 Author: Ian Gow, <iandgow@gmail.com>
-Contributor: Jingyu Zhang, <jingyu.zhang@chicagobooth.edu>
+Contributors: Jingyu Zhang, <jingyu.zhang@chicagobooth.edu>, Evan Jo.
