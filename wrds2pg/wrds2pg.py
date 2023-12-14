@@ -942,7 +942,7 @@ def wrds_update_pq(table_name, schema,
     
     pq_modified = get_modified_pq(pq_file)
         
-    if modified == pq_modified and not force and not fpath:
+    if modified == pq_modified and not force:
         print(schema + "." + alt_table_name + " already up to date")
         return False
     if force:
@@ -950,7 +950,8 @@ def wrds_update_pq(table_name, schema,
     else:
         print("Updated %s.%s is available." % (schema, alt_table_name))
         print("Getting from WRDS.\n")
-    
+    now = strftime("%H:%M:%S", gmtime())
+    print("Beginning file download at %s." % now)
     print("Saving data to temporary CSV.")
     csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
     wrds_to_csv(table_name, schema, csv_file, 
@@ -972,6 +973,9 @@ def wrds_update_pq(table_name, schema,
     col_types = make_table_data["col_types"]
     names = make_table_data["names"]
     csv_to_pq(csv_file, pq_file, names, col_types, modified)
+    print("Parquet file: " + str(pq_file))
+    now = strftime("%H:%M:%S", gmtime())
+    print("Completed creation of parquet file at %s." % now)
     return True
 
 def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
@@ -999,7 +1003,6 @@ def wrds_to_csv(table_name, schema, csv_file,
           
     if not sas_schema:
         sas_schema = schema
-    print("csv_file: " + str(csv_file))
     p = get_wrds_process(table_name=table_name, 
                          schema=sas_schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
@@ -1224,6 +1227,8 @@ def wrds_update_csv(table_name, schema,
     else:
         print("Updated %s.%s is available." % (schema, table_name))
         print("Getting from WRDS.\n")
+    now = strftime("%H:%M:%S", gmtime())
+    print("Beginning file download at %s." % now)
     wrds_to_csv(table_name=table_name, 
                 schema=schema, 
                 csv_file=csv_file,
@@ -1237,4 +1242,6 @@ def wrds_update_csv(table_name, schema,
                 sas_schema=sas_schema, 
                 sas_encoding=sas_encoding)
     set_modified_csv(csv_file, modified)
+    now = strftime("%H:%M:%S", gmtime())
+    print("Completed file download at %s." % now)
     return True
