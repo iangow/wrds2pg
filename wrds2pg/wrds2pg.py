@@ -183,9 +183,9 @@ def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
 
     return(df)
 
-def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None, \
-                  rpath=None, drop=None, keep=None, rename=None, \
-                  alt_table_name=None, sas_schema=None):
+def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None, 
+                  rpath=None, drop=None, keep=None, rename=None, 
+                  sas_schema=None):
     if not wrds_id:
         wrds_id = os.environ['WRDS_ID']
 
@@ -239,20 +239,17 @@ def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None, \
     return sas_code
                              
 
-def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
-                  rpath=None, drop=None, keep=None, rename=None, return_sql=True, \
+def get_table_sql(table_name, schema, wrds_id=None, fpath=None, 
+                  rpath=None, drop=None, keep=None, rename=None, return_sql=True, 
                   alt_table_name=None, col_types=None, sas_schema=None):
                       
     if not alt_table_name:
         alt_table_name = table_name
-    
-    if not col_types:
-        col_types = {}
         
-    sas_code = make_sas_code(table_name=table_name, \
-                             schema = schema, wrds_id=wrds_id, fpath=fpath, \
-                  rpath=rpath, drop=drop, keep=keep, rename=rename, \
-                  alt_table_name=alt_table_name, sas_schema=sas_schema)
+    sas_code = make_sas_code(table_name=table_name, 
+                             schema = schema, wrds_id=wrds_id, fpath=fpath, 
+                             rpath=rpath, drop=drop, keep=keep, rename=rename, 
+                             sas_schema=sas_schema)
     
     # Run the SAS code on the WRDS server and get the result
     df = sas_to_pandas(sas_code, wrds_id, fpath)
@@ -260,25 +257,27 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None, \
     # Make all variable names lower case, get
     # inferred types, then set explicit types if given
     # Identify the datetime fields. These need special handling.
-    df['name'] = df['name'].str.lower()
-    df['postgres_type'] = df.apply(code_row, axis=1)
-    datetimes_inferred = df.loc[df['postgres_type']=="timestamp", "name"]
-    datetimes_inferred_cols = [field.lower() for field in datetimes_inferred
-                                 if field not in col_types.keys()]
-    datetimes_specified = [col for col in col_types if col_types[col]=='timestamp']
-    datetimes = list(set(datetimes_inferred_cols + datetimes_specified))
-    
+    names = [name.lower() for name in df['name']]
+    types = df.apply(code_row, axis=1)
+    col_types_inferred = dict(zip(names, types))
     if col_types:
         for var in col_types.keys():
-            df.loc[df.name == var, 'postgres_type'] = col_types[var]
-    rows_str = df.apply(get_row_sql, axis=1).str.cat(sep=", ")
-    make_table_sql = "CREATE TABLE " + schema + "." + alt_table_name + " (" + \
-                      rows_str + ")"
+            col_types_inferred[var] = col_types[var]
+    
+    rows_str = ", ".join(['"' + name + '" ' + 
+                          col_types_inferred[name] for name in names])
+    
+    datetime_cols = [key for key in col_types_inferred
+                     if col_types_inferred[key]=="datetime"]
+    
+    make_table_sql = 'CREATE TABLE "' + schema + '"."' + alt_table_name + '" (' + \
+                      rows_str + ')'
     
     if return_sql:
-        return {"sql": make_table_sql, "datetimes": datetimes}
+        return {"sql":make_table_sql, "datetimes":datetime_cols, "col_types":col_types_inferred}
     else:
-        df['name'] = df['name'].str.lower()
+        df['name'] = names
+        df['postgres_type'] = [col_types_inferred[name] for name in names]
         return df
 
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
@@ -288,7 +287,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     if fix_cr:
         fix_missing = True;
         fix_cr_code = """
-            * fix_cr_code;
+            * fix_cr_code;  
             array _char _character_;
             
             do over _char;
@@ -510,7 +509,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                     alt_table_name=alt_table_name, col_types=col_types,
                                     sas_schema=sas_schema)
 
-    process_sql("DROP TABLE IF EXISTS " + schema + "." + alt_table_name + " CASCADE", engine)
+    process_sql('DROP TABLE IF EXISTS "' + schema + '"."' + alt_table_name + '" CASCADE', 
+                engine)
         
     # Create schema (and associated role) if necessary
     insp = inspect(engine)
@@ -526,14 +526,16 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
             process_sql("GRANT USAGE ON SCHEMA " + schema + " TO " + 
                          schema + "_access", engine)
     process_sql(make_table_data["sql"], engine)
-        
+
+    col_types = make_table_data["col_types"]
+    numeric_cols = [key for key in col_types if col_types[key] not in ['date', 'time', 'datetime']]
     now = strftime("%H:%M:%S", gmtime())
     print("Beginning file import at %s." % now)
     print("Importing data into %s.%s" % (schema, alt_table_name))
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                                  schema=sas_schema, wrds_id=wrds_id,
                                  drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
-                                 obs=obs, rename=rename, where=where, unformat=unformat,
+                                 obs=obs, rename=rename, where=where, unformat=numeric_cols,
                                  sas_encoding=sas_encoding)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
