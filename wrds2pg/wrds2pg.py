@@ -517,7 +517,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print(f"Importing data into {schema}.{alt_table_name}.")
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                                  schema=sas_schema, wrds_id=wrds_id,
-                                 drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
+                                 drop=drop, keep=keep, fix_cr=fix_cr, 
+                                 fix_missing=fix_missing, 
                                  obs=obs, rename=rename, where=where,
                                  sas_encoding=sas_encoding)
 
@@ -536,7 +537,8 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
     var_names = p.readline().rstrip().lower().split(sep=",")
     
     # ... the rest is the data
-    copy_cmd =  "COPY " + schema + "." + table_name + ' ("' + '", "'.join(var_names) + '")'
+    copy_cmd =  "COPY " + schema + "." + table_name + 
+                    ' ("' + '", "'.join(var_names) + '")'
     copy_cmd += " FROM STDIN CSV ENCODING '%s'" % encoding
     
     with engine.connect() as conn:
@@ -600,19 +602,19 @@ def wrds_update(table_name, schema,
         This converts special missing values to simple missing values.
         
     fix_cr: Boolean [Optional]
-        Set to `True` when the SAS file contains unquoted carriage returns that would
-        otherwise produce `BadCopyFileFormat`.
+        Set to `True` when the SAS file contains unquoted carriage returns that 
+        would otherwise produce `BadCopyFileFormat`.
         Default is `False`.
     
     drop: string [Optional]
         SAS code snippet indicating variables to be dropped.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards can 
+        be used. See examples below.
         
     keep: string [Optional]
         SAS code snippet indicating variables to be retained.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards can
+        be used. See examples below.
             
     obs: Integer [Optional]
         SAS code snippet indicating number of observations to import from SAS file.
@@ -682,7 +684,8 @@ def wrds_update(table_name, schema,
         
     if not engine:
         if not (host and dbname):
-            print("Error: Missing connection variables. Please specify engine or (host, dbname).")
+            print("Error: Missing connection variables. " + 
+                  "Please specify engine or (host, dbname).")
             quit()
         else:
             engine = create_engine("postgresql+psycopg://" + host + "/" + dbname) 
@@ -713,11 +716,14 @@ def wrds_update(table_name, schema,
             print("Getting from WRDS.")
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, 
                    wrds_id=wrds_id,
-                   rpath=rpath, fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
+                   rpath=rpath, fpath=fpath, fix_missing=fix_missing, 
+                   fix_cr=fix_cr,
                    drop=drop, keep=keep, obs=obs, rename=rename,
                    alt_table_name=alt_table_name,
-                   encoding=encoding, col_types=col_types, create_roles=create_roles,
-                   where=where, sas_schema=sas_schema, sas_encoding=sas_encoding)
+                   encoding=encoding, col_types=col_types, 
+                   create_roles=create_roles,
+                   where=where, sas_schema=sas_schema, 
+                   sas_encoding=sas_encoding)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
@@ -860,24 +866,24 @@ def wrds_update_pq(table_name, schema,
         This converts special missing values to simple missing values.
         
     fix_cr: Boolean [Optional]
-        Set to `True` when the SAS file contains unquoted carriage returns that would
-        otherwise produce `BadCopyFileFormat`.
+        Set to `True` when the SAS file contains unquoted carriage returns 
+        that would otherwise produce `BadCopyFileFormat`.
         Default is `False`.
     
     drop: string [Optional]
         SAS code snippet indicating variables to be dropped.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards 
+        can be used. See examples below.
         
     keep: string [Optional]
         SAS code snippet indicating variables to be retained.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards 
+        can be used. See examples below.
             
     obs: Integer [Optional]
-        SAS code snippet indicating number of observations to import from SAS file.
-        Setting this to modest value (e.g., `obs=1000`) can be useful for testing
-        `wrds_update()` with large files.
+        SAS code snippet indicating number of observations to import from 
+        SAS file. Setting this to modest value (e.g., `obs=1000`) can be 
+        useful for testing `wrds_update()` with large files.
         
     rename: string [Optional]
         SAS code snippet indicating variables to be renamed.
@@ -888,22 +894,24 @@ def wrds_update_pq(table_name, schema,
         See examples below.
     
     alt_table_name: string [Optional]
-        Basename of CSV file. Used when file should have different name from table_name.
+        Basename of CSV file. Used when file should have different name 
+        from table_name.
 
     col_types: Dict [Optional]
-        Dictionary of PostgreSQL data types to be used when importing data to PostgreSQL or writing to Parquet files.
-        For Parquet files, conversion from PostgreSQL to PyArrow types is handled by DuckDB.
-        Only a subset of columns needs to be supplied.
-        Supplied types should be compatible with data emitted by SAS's PROC EXPORT 
-        (i.e., one can't "fix" arbitrary type issues using this argument).
-        For example, `col_types = {'permno':'integer', 'permco':'integer'`.
+        Dictionary of PostgreSQL data types to be used when importing data to 
+        PostgreSQL or writing to Parquet files. For Parquet files, conversion 
+        from PostgreSQL to PyArrow types is handled by DuckDB. Only a subset of 
+        columns needs to be supplied. Supplied types should be compatible with 
+        data emitted by SAS's PROC EXPORT  (i.e., one can't "fix" arbitrary type
+        issues using this argument). For example, 
+        `col_types = {'permno':'integer', 'permco':'integer'`.
         
     encoding: string  [Optional]
         Encoding to be used for text emitted by SAS.
     
     sas_schema: string [Optional]
-        WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
-        Data obtained from sas_schema is stored in schema.
+        WRDS schema for the SAS data file. This can differ from the PostgreSQL 
+        schema in some cases. Data obtained from sas_schema is stored in schema.
         
     sas_encoding: string
         Encoding of the SAS data file.
@@ -935,7 +943,7 @@ def wrds_update_pq(table_name, schema,
     pq_modified = get_modified_pq(pq_file)
         
     if modified == pq_modified and not force:
-        print(schema + "." + alt_table_name + " already up to date")
+        print(schema + "." + alt_table_name + " already up to date.")
         return False
     if force:
         print("Forcing update based on user request.")
@@ -943,7 +951,7 @@ def wrds_update_pq(table_name, schema,
         print("Updated %s.%s is available." % (schema, alt_table_name))
         print("Getting from WRDS.")
     now = strftime("%H:%M:%S", gmtime())
-    print("Beginning file download at %s." % now)
+    print(f"Beginning file download at {now}.")
     print("Saving data to temporary CSV.")
     csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
     wrds_to_csv(table_name, schema, csv_file, 
@@ -967,7 +975,7 @@ def wrds_update_pq(table_name, schema,
     csv_to_pq(csv_file, pq_file, names, col_types, modified)
     print("Parquet file: " + str(pq_file))
     now = strftime("%H:%M:%S", gmtime())
-    print("Completed creation of parquet file at %s." % now)
+    print(f"Completed creation of parquet file at {now}.\n")
     return True
 
 def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
@@ -1030,7 +1038,9 @@ def csv_to_pq(csv_file, pq_file, names, col_types, modified,
                                header = True,
                                dtype = col_types)
         df_arrow = df.arrow()
-        my_metadata = df_arrow.schema.with_metadata({b'last_modified': modified.encode()})
+        my_metadata = (df_arrow
+                       .schema
+                       .with_metadata({b'last_modified': modified.encode()}))
         to_write = df_arrow.cast(my_metadata)
         pq.write_table(to_write, pq_file, row_group_size = row_group_size)
 
@@ -1138,24 +1148,24 @@ def wrds_update_csv(table_name, schema,
         This converts special missing values to simple missing values.
         
     fix_cr: Boolean [Optional]
-        Set to `True` when the SAS file contains unquoted carriage returns that would
-        otherwise produce `BadCopyFileFormat`.
+        Set to `True` when the SAS file contains unquoted carriage returns that
+        would otherwise produce `BadCopyFileFormat`.
         Default is `False`.
     
     drop: string [Optional]
         SAS code snippet indicating variables to be dropped.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards can 
+        be used. See examples below.
         
     keep: string [Optional]
         SAS code snippet indicating variables to be retained.
-        Multiple variables should be separated by spaces and SAS wildcards can be used.
-        See examples below.
+        Multiple variables should be separated by spaces and SAS wildcards can
+        be used. See examples below.
             
     obs: Integer [Optional]
-        SAS code snippet indicating number of observations to import from SAS file.
-        Setting this to modest value (e.g., `obs=1000`) can be useful for testing
-        `wrds_update()` with large files.
+        SAS code snippet indicating number of observations to import from SAS 
+        file. Setting this to modest value (e.g., `obs=1000`) can be useful 
+        for testing `wrds_update()` with large files.
         
     rename: string [Optional]
         SAS code snippet indicating variables to be renamed.
@@ -1166,14 +1176,15 @@ def wrds_update_csv(table_name, schema,
         See examples below.
     
     alt_table_name: string [Optional]
-        Basename of CSV file. Used when file should have different name from table_name.
+        Basename of CSV file. Used when file should have different name from 
+        table_name.
     
     encoding: string  [Optional]
         Encoding to be used for text emitted by SAS.
     
     sas_schema: string [Optional]
-        WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
-        Data obtained from sas_schema is stored in schema.
+        WRDS schema for the SAS data file. This can differ from the PostgreSQL 
+        schema in some cases. Data obtained from sas_schema is stored in schema.
         
     sas_encoding: string
         Encoding of the SAS data file.
