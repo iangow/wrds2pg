@@ -101,7 +101,11 @@ def code_row(row):
     if not pd.isnull(format_):
         if re.search(r'datetime', format_, re.I):
             return 'timestamp'
-        elif format_ =='TIME8.' or re.search(r'time', format_, re.I) or format_=='TOD':
+        elif format_ =='TIME8.':
+            return "time"
+        elif re.search(r'time', format_, re.I):
+            return "time"
+        elif format_=='TOD':
             return "time"
         elif re.search(r'(date|yymmdd|mmddyy)', format_, re.I):
             return "date"
@@ -111,7 +115,7 @@ def code_row(row):
     if formatd != 0:
         return 'float8'
     if formatd == 0 and formatl != 0:
-        return 'int8'
+        return 'integer'
     if formatd == 0 and formatl == 0:
         return 'float8'
     else:
@@ -239,13 +243,12 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
     rows_str = ", ".join(['"' + name + '" ' + 
                           col_types_inferred[name] for name in names])
     
-    make_table_sql = 'CREATE TABLE "' + schema + '"."' + alt_table_name + '" (' + \
-                      rows_str + ')'
+    make_table_sql = f'CREATE TABLE "{schema}"."{alt_table_name}" ({rows_str})'
     
     if return_sql:
-        return {"sql":make_table_sql, 
-                "names":names,
-                "col_types":col_types_inferred}
+        return {"sql": make_table_sql, 
+                "names": names,
+                "col_types": col_types_inferred}
     else:
         df['name'] = names
         df['postgres_type'] = [col_types_inferred[name] for name in names]
@@ -336,7 +339,8 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             dates_str = ' '.join([ 'attrib ' + var + ' format=YYMMDD10.;'
                                        for var in dates])
 
-            timestamps = [key for key in col_types if col_types[key]=='timestamp']
+            timestamps = [key for key in col_types 
+                              if col_types[key]=='timestamp']
             timestamps_str = ' '.join([ 'attrib ' + var + ' format=E8601DT19.;'
                                        for var in timestamps])
         else:
@@ -371,7 +375,8 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                     {timestamps_str}
             run;
 
-            proc export data={new_table}(encoding="wlatin1") outfile=stdout dbms=csv;
+            proc export data={new_table}(encoding="wlatin1") 
+                outfile=stdout dbms=csv;
             run;"""
     else:
 
@@ -389,11 +394,12 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      fix_missing = False, obs=None, rename=None, where=None,
                      encoding=None, sas_encoding=None):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
-                                    rpath=rpath, fpath=fpath, schema=schema, 
-                                    drop=drop, rename=rename, keep=keep, 
-                                    fix_cr=fix_cr, fix_missing=fix_missing, 
-                                    obs=obs, where=where,
-                                    encoding=encoding, sas_encoding=sas_encoding)
+                            rpath=rpath, fpath=fpath, schema=schema, 
+                            drop=drop, rename=rename, keep=keep, 
+                            fix_cr=fix_cr, fix_missing=fix_missing, 
+                            obs=obs, where=where,
+                            encoding=encoding, 
+                            sas_encoding=sas_encoding)
     
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
