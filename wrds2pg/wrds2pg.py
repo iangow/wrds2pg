@@ -535,11 +535,10 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
         encoding = "UTF8"
     
     var_names = p.readline().rstrip().lower().split(sep=",")
-    
+    var_str = '("' + '", "'.join(var_names) + '")'
     # ... the rest is the data
-    copy_cmd =  "COPY " + schema + "." + table_name + 
-                    ' ("' + '", "'.join(var_names) + '")'
-    copy_cmd += " FROM STDIN CSV ENCODING '%s'" % encoding
+    copy_cmd =  f'COPY "{schema}"."{table_name}" {var_str}'
+    copy_cmd += f" FROM STDIN CSV ENCODING '{encoding}'"
     
     with engine.connect() as conn:
         connection_fairy = conn.connection
@@ -730,16 +729,15 @@ def wrds_update(table_name, schema,
             if not role_exists(engine, schema):
                 create_role(engine, schema)
             
-            sql = r"""
-                ALTER TABLE "%s"."%s" OWNER TO %s""" % (schema, alt_table_name, schema)
+            sql = f'ALTER TABLE "{schema}"."{alt_table_name}" OWNER TO {schema}'
             with engine.connect() as conn:
                 conn.execute(text(sql))
 
             if not role_exists(engine, "%s_access" % schema):
                 create_role(engine, "%s_access" % schema)
                 
-            sql = r"""
-                GRANT SELECT ON "%s"."%s"  TO %s_access""" % (schema, alt_table_name, schema)
+            sql = f'GRANT SELECT ON "{schema}"."{alt_table_name}"'
+            sql += f' TO {schema}_access'
             res = process_sql(sql, engine)
         else:
             res = True
