@@ -428,7 +428,7 @@ def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
     if not rpath:
         rpath = sas_schema
     
-    sas_code = f"proc contents data={rpath}.{table_name}(encoding='wlatin1');"
+    sas_code = f"PROC CONTENTS data={rpath}.{table_name}(encoding='wlatin1');"
 
     p = get_process(sas_code, wrds_id)
     contents = p.readlines()
@@ -444,7 +444,8 @@ def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
             next_row = False
 
         if re.match(r"Last Modified", line):
-            modified = re.sub(r"^Last Modified\s+(.*?)\s{2,}.*$", r"Last modified: \1", line)
+            modified = re.sub(r"^Last Modified\s+(.*?)\s{2,}.*$",
+                              r"Last modified: \1", line)
             modified = modified.rstrip()
             next_row = True
 
@@ -529,13 +530,14 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     return res
 
 def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
-    # The first line has the variable names ...
     
     if not encoding:
         encoding = "UTF8"
     
+    # The first line has the variable names ...
     var_names = p.readline().rstrip().lower().split(sep=",")
     var_str = '("' + '", "'.join(var_names) + '")'
+    
     # ... the rest is the data
     copy_cmd =  f'COPY "{schema}"."{table_name}" {var_str}'
     copy_cmd += f" FROM STDIN CSV ENCODING '{encoding}'"
