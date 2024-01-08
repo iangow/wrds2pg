@@ -77,9 +77,9 @@ def get_process(sas_code, wrds_id=wrds_id, fpath=None):
   
 def code_row(row):
 
-    """A function to code PostgreSQL data types using output from SAS's PROC CONTENTS.
-    Supported types that can be returned include FLOAT8, INT8, TEXT, TIMESTAMP, 
-    TIME, and DATE.
+    """A function to code PostgreSQL data types using output from SAS's 
+    PROC CONTENTS. Supported types that can be returned include FLOAT8, INTEGER,
+    TEXT, TIMESTAMP, TIME, and DATE.
 
     Parameters
     ----------
@@ -217,7 +217,8 @@ def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None,
                              
 
 def get_table_sql(table_name, schema, wrds_id=None, fpath=None, 
-                  rpath=None, drop=None, keep=None, rename=None, return_sql=True, 
+                  rpath=None, drop=None, keep=None, rename=None, 
+                  return_sql=True, 
                   alt_table_name=None, col_types=None, sas_schema=None):
                       
     if not alt_table_name:
@@ -225,7 +226,8 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
         
     sas_code = make_sas_code(table_name=table_name, 
                              schema = schema, wrds_id=wrds_id, fpath=fpath, 
-                             rpath=rpath, drop=drop, keep=keep, rename=rename, 
+                             rpath=rpath, drop=drop, keep=keep, 
+                             rename=rename, 
                              sas_schema=sas_schema)
     
     # Run the SAS code on the WRDS server and get the result
@@ -460,7 +462,8 @@ def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
 def get_table_comment(table_name, schema, engine):
 
     if engine.dialect.has_table(engine.connect(), table_name, schema=schema):
-        sql = """SELECT obj_description('"%s"."%s"'::regclass, 'pg_class')""" % (schema, table_name)
+        sql = f"""SELECT obj_description('"{schema}"."{table_name}"'"""
+        sql += "::regclass, 'pg_class')"
         with engine.connect() as conn:
             res = conn.execute(text(sql)).fetchone()[0]
         return(res)
