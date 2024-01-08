@@ -5,3 +5,5 @@
 wrds2pg.egg-info
 dist
 build
+data
+.ipynb_checkpoints
