@@ -4,7 +4,7 @@ from io import StringIO
 import re, subprocess, os, paramiko
 from time import gmtime, strftime
 from sqlalchemy import create_engine, inspect
-from sqlalchemy import text
+from sqlalchemy import text, MetaData, Table
 import duckdb
 from pathlib import Path
 import shutil
@@ -16,12 +16,11 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import os
 import time
-
 from sqlalchemy.engine import reflection
-from os import getenv
+from sqlalchemy.dialects.postgresql import dialect
 
 client = paramiko.SSHClient()
-wrds_id = getenv("WRDS_ID")
+wrds_id = os.getenv("WRDS_ID")
 
 import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
@@ -554,7 +553,9 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
         try:
             with connection_fairy.cursor() as curs:
                 curs.execute("SET DateStyle TO 'ISO, MDY'")
-                curs.copy_expert(copy_cmd, p)
+                with curs.copy(copy_cmd) as copy:
+                    while data := p.read():
+                        copy.write(data)
                 curs.close()
         finally:
             connection_fairy.commit()
@@ -693,7 +694,7 @@ def wrds_update(table_name, schema,
             print("Error: Missing connection variables. Please specify engine or (host, dbname).")
             quit()
         else:
-            engine = create_engine("postgresql://" + host + "/" + dbname) 
+            engine = create_engine("postgresql+psycopg://" + host + "/" + dbname) 
     if wrds_id:
         # 1. Get comments from PostgreSQL database
         comment = get_table_comment(alt_table_name, schema, engine)
@@ -775,13 +776,13 @@ def run_file_sql(file, engine):
             
 def make_engine(host=None, dbname=None, wrds_id=None):
     if not dbname:
-        dbname = getenv("PGDATABASE")
+        dbname = os.getenv("PGDATABASE")
     if not host:
-        host = getenv("PGHOST", "localhost")
+        host = os.getenv("PGHOST", "localhost")
     if not wrds_id:
-        wrds_id = getenv("WRDS_ID")
+        wrds_id = os.getenv("WRDS_ID")
     
-    engine = create_engine("postgresql://" + host + "/" + dbname)
+    engine = create_engine("postgresql+psycopg://" + host + "/" + dbname)
     return engine
   
 def role_exists(engine, role):
@@ -800,9 +801,9 @@ def get_wrds_tables(schema, wrds_id=None):
     from sqlalchemy import MetaData
 
     if not wrds_id:
-        wrds_id = getenv("WRDS_ID")
+        wrds_id = os.getenv("WRDS_ID")
 
-    wrds_engine = create_engine("postgresql://%s@wrds-pgdata.wharton.upenn.edu:9737/wrds" % wrds_id,
+    wrds_engine = create_engine("postgresql+psycopg://%s@wrds-pgdata.wharton.upenn.edu:9737/wrds" % wrds_id,
                                 connect_args = {'sslmode':'require'})
 
     metadata = MetaData(wrds_engine, schema=schema)
@@ -1245,3 +1246,10 @@ def wrds_update_csv(table_name, schema,
     now = strftime("%H:%M:%S", gmtime())
     print("Completed file download at %s." % now)
     return True
+
+def get_type_dict(table, schema, engine):
+    pgDialect = dialect()
+    metadata_obj = MetaData()
+    table_data = Table(table, metadata_obj, schema=schema, autoload_with=engine)
+    return {i.name: i.type.compile(dialect=pgDialect) 
+                    for i in table_data.c}

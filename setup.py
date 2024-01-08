@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="1.0.29",
+    version="1.0.30",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
     description="Convert WRDS or local SAS data to PostgreSQL, parquet, or CSV.",
@@ -14,7 +14,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/iangow/wrds2pg/",
     packages=setuptools.find_packages(),
-    install_requires=['pandas', 'sqlalchemy', 'paramiko', 'psycopg', 'pyarrow', 'duckdb'],
+    install_requires=['pandas', 'sqlalchemy>=2.0.0', 'paramiko', 'psycopg', 'pyarrow', 'duckdb'],
     python_requires=">=3",
     classifiers=[
         "Programming Language :: Python :: 3",
