@@ -14,7 +14,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/iangow/wrds2pg/",
     packages=setuptools.find_packages(),
-    install_requires=['pandas', 'sqlalchemy>=2.0.0', 'paramiko', 'psycopg', 'pyarrow', 'duckdb'],
+    install_requires=['pandas', 'sqlalchemy>=2.0.0', 'paramiko', 'psycopg[binary]', 'pyarrow', 'duckdb'],
     python_requires=">=3",
     classifiers=[
         "Programming Language :: Python :: 3",
