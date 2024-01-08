@@ -353,44 +353,35 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         else:
             fix_missing_str = ""
         
-        sas_template = """
+        sas_code = f"""
             options nosource nonotes;
-            %s
+            {libname_stmt}
             * Fix missing values;
-            data %s;
-                set %s.%s%s;
-                %s
-                %s
-                %s
+            data {new_table};
+                set {schema}.{sas_table}{sas_encoding_str};
+                {fix_cr_code}
+                {fix_missing_str}
+                {where_str}
             run;
 
             proc datasets lib=work;
-                modify %s; 
-                    %s
-                    %s
-                    %s
+                modify {new_table}; 
+                    {unformat_str}
+                    {dates_str}
+                    {timestamps_str}
             run;
 
-            proc export data=%s(encoding="wlatin1") outfile=stdout dbms=csv;
+            proc export data={new_table}(encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
-        sas_code = sas_template % (libname_stmt, new_table, 
-                                   schema, sas_table, sas_encoding_str,
-                                   fix_cr_code, fix_missing_str, where_str,
-                                   new_table,
-                                   unformat_str, dates_str, timestamps_str,
-                                   new_table)
-                                   
-                              
     else:
 
-        sas_template = """
+        sas_code = f"""
             options nosource nonotes;
-            %s
+            {libname_stmt}
 
-            proc export data=%s.%s(%s encoding="wlatin1") outfile=stdout dbms=csv;
+            proc export data={schema}.{table_name}({rename_str} 
+                              encoding="wlatin1") outfile=stdout dbms=csv;
             run;"""
-
-        sas_code = sas_template % (libname_stmt, schema, table_name, rename_str) 
     return sas_code        
     
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
@@ -428,7 +419,8 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename=None,
 
     return(df)
 
-def get_modified_str(table_name, sas_schema, wrds_id=wrds_id, encoding=None, rpath=None):
+def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
+                     encoding=None, rpath=None):
     
     if not encoding:
         encoding = "utf-8"
@@ -436,7 +428,7 @@ def get_modified_str(table_name, sas_schema, wrds_id=wrds_id, encoding=None, rpa
     if not rpath:
         rpath = sas_schema
     
-    sas_code = "proc contents data=" + rpath + "." + table_name + "(encoding='wlatin1');"
+    sas_code = f"proc contents data={rpath}.{table_name}(encoding='wlatin1');"
 
     p = get_process(sas_code, wrds_id)
     contents = p.readlines()
@@ -472,8 +464,7 @@ def set_table_comment(table_name, schema, comment, engine):
 
     connection = engine.connect()
     trans = connection.begin()
-    sql = """
-        COMMENT ON TABLE "%s"."%s" IS '%s'""" % (schema, table_name, comment)
+    sql = f"""COMMENT ON TABLE "{schema}"."{table_name}" IS '{comment}'"""
 
     try:
         res = connection.execute(text(sql))
@@ -522,8 +513,8 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     process_sql(make_table_data["sql"], engine)
     
     now = strftime("%H:%M:%S", gmtime())
-    print("Beginning file import at %s." % now)
-    print("Importing data into %s.%s" % (schema, alt_table_name))
+    print(f"Beginning file import at {now} UTC.")
+    print(f"Importing data into {schema}.{alt_table_name}.")
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                                  schema=sas_schema, wrds_id=wrds_id,
                                  drop=drop, keep=keep, fix_cr=fix_cr, fix_missing=fix_missing, 
@@ -532,7 +523,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
     now = strftime("%H:%M:%S", gmtime())
-    print("Completed file import at %s." % now)
+    print(f"Completed file import at {now} UTC.\n")
 
     return res
 
@@ -719,7 +710,7 @@ def wrds_update(table_name, schema,
             print("Forcing update based on user request.")
         else:
             print("Updated %s.%s is available." % (schema, table_name))
-            print("Getting from WRDS.\n")
+            print("Getting from WRDS.")
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, 
                    wrds_id=wrds_id,
                    rpath=rpath, fpath=fpath, fix_missing=fix_missing, fix_cr=fix_cr,
@@ -950,7 +941,7 @@ def wrds_update_pq(table_name, schema,
         print("Forcing update based on user request.")
     else:
         print("Updated %s.%s is available." % (schema, alt_table_name))
-        print("Getting from WRDS.\n")
+        print("Getting from WRDS.")
     now = strftime("%H:%M:%S", gmtime())
     print("Beginning file download at %s." % now)
     print("Saving data to temporary CSV.")
@@ -1221,15 +1212,15 @@ def wrds_update_csv(table_name, schema,
     else:
         csv_modified = ""
     if modified == csv_modified and not force:
-        print(schema + "." + table_name + " already up to date")
+        print(f"{schema}.{table_name} already up to date.\n")
         return False
     if force:
         print("Forcing update based on user request.")
     else:
-        print("Updated %s.%s is available." % (schema, table_name))
-        print("Getting from WRDS.\n")
+        print(f"Updated {schema}.{table_name} is available.")
+        print("Getting from WRDS.")
     now = strftime("%H:%M:%S", gmtime())
-    print("Beginning file download at %s." % now)
+    print(f"Beginning file download at {now}.")
     wrds_to_csv(table_name=table_name, 
                 schema=schema, 
                 csv_file=csv_file,
@@ -1244,7 +1235,7 @@ def wrds_update_csv(table_name, schema,
                 sas_encoding=sas_encoding)
     set_modified_csv(csv_file, modified)
     now = strftime("%H:%M:%S", gmtime())
-    print("Completed file download at %s." % now)
+    print(f"Completed file download at {now}.\n")
     return True
 
 def get_type_dict(table, schema, engine):
