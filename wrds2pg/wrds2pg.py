@@ -25,6 +25,9 @@ wrds_id = os.getenv("WRDS_ID")
 import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
+def get_now():
+    return strftime("%Y-%m-%d %H:%M:%S", gmtime())
+
 def get_process(sas_code, wrds_id=wrds_id, fpath=None):
     """Update a local CSV version of a WRDS table.
 
@@ -51,11 +54,11 @@ def get_process(sas_code, wrds_id=wrds_id, fpath=None):
 
         p=subprocess.Popen(['sas', '-stdio', '-noterminal'],
                            stdin=subprocess.PIPE,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           stdout=subprocess.PIPE, 
+                           stderr=subprocess.PIPE,
                            universal_newlines=True)
         p.stdin.write(sas_code)
         p.stdin.close()
-
         return p.stdout
 
     elif wrds_id:
@@ -427,21 +430,28 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename=None,
 
     return(df)
 
+def proc_contents(table_name, sas_schema=None, wrds_id=os.getenv("WRDS_ID"), rpath=None, encoding=None):
+    if not encoding:
+        encoding = "utf-8"
+    
+    if not sas_schema:
+        sas_schema = rpath
+    
+    sas_code = f"PROC CONTENTS data={sas_schema}.{table_name}(encoding='{encoding}');"
+
+    p = get_process(sas_code, wrds_id)
+
+    return p.readlines()
+
 def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
                      encoding=None, rpath=None):
     
-    if not encoding:
-        encoding = "utf-8"
+    contents = proc_contents(table_name, sas_schema, wrds_id, rpath, encoding)
+    if len(contents) == 0:
+        print(f"Table {sas_schema}.{table_name} not found.")
+        return None
 
-    if not rpath:
-        rpath = sas_schema
-    
-    sas_code = f"PROC CONTENTS data={rpath}.{table_name}(encoding='wlatin1');"
-
-    p = get_process(sas_code, wrds_id)
-    contents = p.readlines()
     modified = ""
-
     next_row = False
     for line in contents:
         if next_row:
@@ -522,8 +532,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                          schema + "_access", engine)
     process_sql(make_table_data["sql"], engine)
     
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Beginning file import at {now} UTC.")
+    print(f"Beginning file import at {get_now()} UTC.")
     print(f"Importing data into {schema}.{alt_table_name}.")
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                                  schema=sas_schema, wrds_id=wrds_id,
@@ -533,8 +542,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                  sas_encoding=sas_encoding)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Completed file import at {now} UTC.\n")
+    print(f"Completed file import at {get_now()} UTC.\n")
 
     return res
 
@@ -706,12 +714,15 @@ def wrds_update(table_name, schema,
         # 2. Get modified date from WRDS
         modified = get_modified_str(table_name, sas_schema, wrds_id, 
                                     encoding=encoding, rpath=rpath)
+        if not modified:
+            return False
     else:
-        comment = 'Updated on ' + strftime("%Y-%m-%d %H:%M:%S", gmtime())
+        now = get_now()
+        comment = f'Updated on {now} UTC.' 
         modified = comment
         # 3. If updated table available, get from WRDS
     if modified == comment and not force and not fpath:
-        print(schema + "." + alt_table_name + " already up to date")
+        print(f"{schema}.{alt_table_name} already up to date.")
         return False
     elif modified == "" and not force:
         print("WRDS flaked out!")
@@ -722,7 +733,7 @@ def wrds_update(table_name, schema,
         elif force:
             print("Forcing update based on user request.")
         else:
-            print("Updated %s.%s is available." % (schema, table_name))
+            print(f"Updated {schema}.{table_name} is available.")
             print("Getting from WRDS.")
         wrds_to_pg(table_name=table_name, schema=schema, engine=engine, 
                    wrds_id=wrds_id,
@@ -948,6 +959,8 @@ def wrds_update_pq(table_name, schema,
     modified = get_modified_str(table_name=table_name, 
                                 sas_schema=sas_schema, wrds_id=wrds_id, 
                                 encoding=encoding)
+    if not modified:
+        return False
     
     pq_modified = get_modified_pq(pq_file)
         
@@ -959,8 +972,7 @@ def wrds_update_pq(table_name, schema,
     else:
         print("Updated %s.%s is available." % (schema, alt_table_name))
         print("Getting from WRDS.")
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Beginning file download at {now}.")
+    print(f"Beginning file download at {get_now()} UTC.")
     print("Saving data to temporary CSV.")
     csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
     wrds_to_csv(table_name, schema, csv_file, 
@@ -983,8 +995,7 @@ def wrds_update_pq(table_name, schema,
     names = make_table_data["names"]
     csv_to_pq(csv_file, pq_file, names, col_types, modified)
     print("Parquet file: " + str(pq_file))
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Completed creation of parquet file at {now}.\n")
+    print(f"Completed creation of parquet file at {get_now()}.\n")
     return True
 
 def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
@@ -1055,11 +1066,11 @@ def csv_to_pq(csv_file, pq_file, names, col_types, modified,
 
 def modified_encode(last_modified):
     date_time_str = last_modified.split("Last modified: ")[1]
-    mtime = datetime \
-            .strptime(date_time_str, "%m/%d/%Y %H:%M:%S") \
-            .replace(tzinfo=ZoneInfo("America/Chicago")) \
-            .astimezone(timezone.utc) \
-            .timestamp()
+    mtime = (datetime 
+             .strptime(date_time_str, "%m/%d/%Y %H:%M:%S") 
+             .replace(tzinfo=ZoneInfo("America/Chicago")) 
+             .astimezone(timezone.utc) 
+             .timestamp())
     return mtime
 
 def modified_decode(mtime):
@@ -1076,9 +1087,9 @@ def modified_decode(mtime):
         Last modified information
     """
     utc_dt = datetime.fromtimestamp(mtime)
-    last_modified = utc_dt \
-                      .astimezone(ZoneInfo("America/Chicago")) \
-                      .strftime("Last modified: %m/%d/%Y %H:%M:%S")
+    last_modified = (utc_dt 
+                     .astimezone(ZoneInfo("America/Chicago")) 
+                     .strftime("Last modified: %m/%d/%Y %H:%M:%S"))
     return(last_modified)
 
 def get_modified_csv(file_name):
@@ -1226,7 +1237,9 @@ def wrds_update_csv(table_name, schema,
     
     csv_file = Path(data_dir, schema, alt_table_name).with_suffix('.csv.gz')
     modified = get_modified_str(table_name, sas_schema, wrds_id)
-    
+    if not modified:
+        return False
+
     if os.path.exists(csv_file):
         csv_modified = get_modified_csv(csv_file)
     else:
@@ -1239,8 +1252,7 @@ def wrds_update_csv(table_name, schema,
     else:
         print(f"Updated {schema}.{table_name} is available.")
         print("Getting from WRDS.")
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Beginning file download at {now}.")
+    print(f"Beginning file download at {get_now()} UTC.")
     wrds_to_csv(table_name=table_name, 
                 schema=schema, 
                 csv_file=csv_file,
@@ -1254,8 +1266,7 @@ def wrds_update_csv(table_name, schema,
                 sas_schema=sas_schema, 
                 sas_encoding=sas_encoding)
     set_modified_csv(csv_file, modified)
-    now = strftime("%H:%M:%S", gmtime())
-    print(f"Completed file download at {now}.\n")
+    print(f"Completed file download at {get_now()} UTC.\n")
     return True
 
 def get_type_dict(table, schema, engine):
