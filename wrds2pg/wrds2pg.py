@@ -499,7 +499,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
                drop=None, obs=None, rename=None, keep=None, where=None,
                alt_table_name = None, encoding=None, col_types=None, create_roles=True,
-               sas_schema=None, sas_encoding=None):
+               sas_schema=None, sas_encoding=None, tz='UTC'):
 
     if not alt_table_name:
         alt_table_name = table_name
@@ -541,12 +541,12 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                  obs=obs, rename=rename, where=where,
                                  sas_encoding=sas_encoding)
 
-    res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding)
+    res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding, tz=tz)
     print(f"Completed file import at {get_now()} UTC.\n")
 
     return res
 
-def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
+def wrds_process_to_pg(table_name, schema, engine, p, encoding=None, tz='UTC'):
     
     if not encoding:
         encoding = "UTF8"
@@ -564,6 +564,7 @@ def wrds_process_to_pg(table_name, schema, engine, p, encoding=None):
         try:
             with connection_fairy.cursor() as curs:
                 curs.execute("SET DateStyle TO 'ISO, MDY'")
+                curs.execute(f"SET TimeZone TO '{tz}'")
                 with curs.copy(copy_cmd) as copy:
                     while data := p.read():
                         copy.write(data)
@@ -585,7 +586,7 @@ def wrds_update(table_name, schema,
                 alt_table_name=None, 
                 col_types=None, create_roles=True,
                 encoding=None, sas_schema=None, sas_encoding=None,
-                rpath=None, fpath=None,):
+                rpath=None, fpath=None, tz='UTC'):
     """Update a PostgreSQL table using WRDS SAS data.
 
     Parameters
@@ -744,7 +745,8 @@ def wrds_update(table_name, schema,
                    encoding=encoding, col_types=col_types, 
                    create_roles=create_roles,
                    where=where, sas_schema=sas_schema, 
-                   sas_encoding=sas_encoding)
+                   sas_encoding=sas_encoding,
+                   tz=tz)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
