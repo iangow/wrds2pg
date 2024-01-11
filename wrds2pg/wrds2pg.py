@@ -3,8 +3,6 @@ import pandas as pd
 from io import StringIO
 import re, subprocess, os, paramiko
 from time import gmtime, strftime
-from sqlalchemy import create_engine, inspect
-from sqlalchemy import text, MetaData, Table
 import duckdb
 from pathlib import Path
 import shutil
@@ -14,15 +12,17 @@ import pyarrow.parquet as pq
 import pyarrow as pa
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import os
 import time
+from sqlalchemy import create_engine, inspect
+from sqlalchemy import text, MetaData, Table
 from sqlalchemy.engine import reflection
 from sqlalchemy.dialects.postgresql import dialect
+from sqlalchemy import MetaData
+import warnings
 
 client = paramiko.SSHClient()
 wrds_id = os.getenv("WRDS_ID")
 
-import warnings
 warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
 def get_now():
@@ -800,7 +800,7 @@ def make_engine(host=None, dbname=None, wrds_id=None):
     if not wrds_id:
         wrds_id = os.getenv("WRDS_ID")
     
-    engine = create_engine("postgresql+psycopg://" + host + "/" + dbname)
+    engine = create_engine(f"postgresql+psycopg://{host}/{dbname}")
     return engine
   
 def role_exists(engine, role):
@@ -814,36 +814,48 @@ def create_role(engine, role):
     process_sql("CREATE ROLE %s" % role, engine)
     return True
 
-def get_wrds_tables(schema, wrds_id=None):
+def get_pg_tables(schema, engine, keys=False):
 
-    from sqlalchemy import MetaData
+    metadata = MetaData()    
+    metadata.reflect(bind=engine, schema=schema)
+    
+    if keys:
+        table_list = [key for key in metadata.tables.keys()]
+    else:
+        table_list = [key.name for key in metadata.tables.values()]
+    return table_list
+
+def get_cols(table, schema, engine):
+    metadata = MetaData()    
+    metadata.reflect(bind=engine, schema=schema)
+    return [col.name for col in metadata.tables[table].columns]
+
+def get_wrds_url(wrds_id):
+    host = "wrds-pgdata.wharton.upenn.edu"
+    port = "9737"
+    dbname = "wrds"
+    return f"postgresql+psycopg://{wrds_id}@{host}:{port}/{dbname}"
+
+def get_wrds_tables(schema, wrds_id):
 
     if not wrds_id:
         wrds_id = os.getenv("WRDS_ID")
-
-    wrds_engine = create_engine("postgresql+psycopg://%s@wrds-pgdata.wharton.upenn.edu:9737/wrds" % wrds_id,
+    wrds_url = get_wrds_url(wrds_id)
+    wrds_engine = create_engine(wrds_url,
                                 connect_args = {'sslmode':'require'})
+    
+    return get_pg_tables(schema, wrds_engine)
 
-    metadata = MetaData(wrds_engine, schema=schema)
-    metadata.reflect(schema=schema, autoload=True)
-  
-    table_list = [key.name for key in metadata.tables.values()]
-    wrds_engine.dispose()
-    return table_list
-
-def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR"), 
-                sas_schema=None):
+def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR")):
+    
     data_dir = os.path.expanduser(data_dir)
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
-    
-    if not sas_schema:
-        sas_schema = schema
 
     schema_dir = Path(data_dir, schema)
-
     if not os.path.exists(schema_dir):
         os.makedirs(schema_dir)
+        
     pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
     return pq_file
 
