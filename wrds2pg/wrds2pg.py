@@ -752,12 +752,11 @@ def wrds_update(table_name, schema,
                 create_role(engine, schema)
             
             sql = f'ALTER TABLE "{schema}"."{alt_table_name}" OWNER TO {schema}'
-            with engine.connect() as conn:
-                conn.execute(text(sql))
+            process_sql(sql, engine)
 
             if not role_exists(engine, "%s_access" % schema):
                 create_role(engine, "%s_access" % schema)
-                
+            
             sql = f'GRANT SELECT ON "{schema}"."{alt_table_name}"'
             sql += f' TO {schema}_access'
             res = process_sql(sql, engine)
