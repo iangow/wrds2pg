@@ -836,7 +836,7 @@ def get_wrds_url(wrds_id):
     dbname = "wrds"
     return f"postgresql+psycopg://{wrds_id}@{host}:{port}/{dbname}"
 
-def get_wrds_tables(schema, wrds_id):
+def get_wrds_tables(schema, wrds_id=None):
 
     if not wrds_id:
         wrds_id = os.getenv("WRDS_ID")
@@ -967,7 +967,7 @@ def wrds_update_pq(table_name, schema,
         alt_table_name = table_name
     
     pq_file = get_pq_file(table_name=alt_table_name, schema=schema, 
-                          data_dir=data_dir, sas_schema=sas_schema)
+                          data_dir=data_dir)
                 
     modified = get_modified_str(table_name=table_name, 
                                 sas_schema=sas_schema, wrds_id=wrds_id, 
