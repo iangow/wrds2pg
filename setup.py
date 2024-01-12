@@ -6,7 +6,7 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="wrds2pg",
-    version="1.0.30",
+    version="1.0.31",
     author="Ian Gow",
     author_email="iandgow@gmail.com",
     description="Convert WRDS or local SAS data to PostgreSQL, parquet, or CSV.",

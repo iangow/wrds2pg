@@ -9,3 +9,4 @@ from wrds2pg.wrds2pg import wrds_to_csv, get_cols
 from wrds2pg.wrds2pg import csv_to_pq, wrds_update_csv
 from wrds2pg.wrds2pg import get_type_dict, proc_contents
 from wrds2pg.wrds2pg import get_pg_tables, get_wrds_tables
+from wrds2pg.wrds2pg import get_wrds_sas

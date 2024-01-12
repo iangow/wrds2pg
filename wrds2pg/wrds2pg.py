@@ -79,7 +79,6 @@ def get_process(sas_code, wrds_id=wrds_id, fpath=None):
         return stdout
   
 def code_row(row):
-
     """A function to code PostgreSQL data types using output from SAS's 
     PROC CONTENTS. Supported types that can be returned include FLOAT8, INTEGER,
     TEXT, TIMESTAMP, TIME, and DATE.
@@ -125,7 +124,6 @@ def code_row(row):
         return 'text'
 
 def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
-
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame.
 
@@ -198,7 +196,6 @@ def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None,
             outfile=stdout dbms=csv;
         run;
     """
-
     if rename:
         rename_str = "rename=(" + rename + ") "
     else:
@@ -259,10 +256,17 @@ def get_table_sql(table_name, schema, wrds_id=None, fpath=None,
         df['postgres_type'] = [col_types_inferred[name] for name in names]
         return df
 
+def get_ts_str(i, var):
+    temp =  f"        temp_var_{i} = input({var}, YMDDTTM.);\n"
+    temp += f"        drop {var};\n"
+    temp += f"        rename temp_var_{i} = {var};\n"
+    return temp
+
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
-                     drop=None, keep=None, fix_cr = False, 
-                     fix_missing = False, obs=None, where=None,
-                     rename=None, encoding=None, sas_encoding=None):
+                 drop=None, keep=None, fix_cr=False, col_types=None,
+                 fix_missing=False, obs=None, where=None,
+                 rename=None, encoding=None, sas_encoding=None,
+                 tz="UTC", ts_strs=None):
     
     make_table_data = get_table_sql(table_name=table_name, schema=schema, 
                                     wrds_id=wrds_id,
@@ -333,8 +337,15 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         new_table = "%s%s" % (schema, table_name)
         new_table = new_table[0:min(len(new_table), 32)]
 
+        if ts_strs:
+            ts_str_list = [get_ts_str(i, var) for i, var in enumerate(ts_strs)]
+            ts_str = '\n'.join(ts_str_list)
+            for i in ts_strs:
+                col_types[i] = "timestamp"
+        else:
+            ts_str = ""
+        
         if col_types:
-            # print(col_types)
             unformat = [key for key in col_types if col_types[key] 
                           not in ['date', 'time', 'timestamp']]
             unformat_str = ' '.join([ 'attrib ' + var + ' format=;'
@@ -346,7 +357,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
 
             timestamps = [key for key in col_types 
                               if col_types[key]=='timestamp']
-            timestamps_str = ' '.join([ 'attrib ' + var + ' format=E8601DT19.;'
+            timestamps_str = ' '.join([ 'attrib ' + var + ' format=E8601DX.;'
                                        for var in timestamps])
         else:
             unformat_str = ""
@@ -364,10 +375,13 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         
         sas_code = f"""
             options nosource nonotes;
+            options timezone='{tz}';
+            
             {libname_stmt}
             * Fix missing values;
             data {new_table};
                 set {schema}.{sas_table}{sas_encoding_str};
+                {ts_str}
                 {fix_cr_code}
                 {fix_missing_str}
                 {where_str}
@@ -397,21 +411,22 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
 def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop=None, keep=None, fix_cr = False, 
                      fix_missing = False, obs=None, rename=None, where=None,
-                     encoding=None, sas_encoding=None):
+                     encoding=None, sas_encoding=None, 
+                     tz="UTC", ts_strs=None):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
                             rpath=rpath, fpath=fpath, schema=schema, 
                             drop=drop, rename=rename, keep=keep, 
                             fix_cr=fix_cr, fix_missing=fix_missing, 
                             obs=obs, where=where,
-                            encoding=encoding, 
-                            sas_encoding=sas_encoding)
+                            encoding=encoding, sas_encoding=sas_encoding,
+                            tz=tz, ts_strs=ts_strs)
     
     p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename=None, 
                    drop=None, obs=None, encoding=None, fpath=None, rpath=None,
-                   col_types=None,
+                   col_types=None, ts_strs=None,
                    where=None, sas_schema=None):
 
     if not encoding:
@@ -422,7 +437,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename=None,
 
     p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, 
                          rename=rename, obs=obs, where=where, 
-                         col_types=col_types,
+                         col_types=col_types, ts_strs=ts_strs,
                          fpath=fpath, rpath=rpath)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
@@ -497,7 +512,7 @@ def set_table_comment(table_name, schema, comment, engine):
 
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
-               drop=None, obs=None, rename=None, keep=None, where=None,
+               drop=None, obs=None, rename=None, keep=None, where=None, ts_strs=None,
                alt_table_name = None, encoding=None, col_types=None, create_roles=True,
                sas_schema=None, sas_encoding=None, tz='UTC'):
 
@@ -535,11 +550,11 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     print(f"Beginning file import at {get_now()} UTC.")
     print(f"Importing data into {schema}.{alt_table_name}.")
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
-                                 schema=sas_schema, wrds_id=wrds_id,
-                                 drop=drop, keep=keep, fix_cr=fix_cr, 
-                                 fix_missing=fix_missing, 
-                                 obs=obs, rename=rename, where=where,
-                                 sas_encoding=sas_encoding)
+                         schema=sas_schema, wrds_id=wrds_id,
+                         drop=drop, keep=keep, fix_cr=fix_cr, 
+                         fix_missing=fix_missing, ts_strs=ts_strs,
+                         obs=obs, rename=rename, where=where,
+                         sas_encoding=sas_encoding, tz=tz)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding, tz=tz)
     print(f"Completed file import at {get_now()} UTC.\n")
@@ -586,7 +601,7 @@ def wrds_update(table_name, schema,
                 alt_table_name=None, 
                 col_types=None, create_roles=True,
                 encoding=None, sas_schema=None, sas_encoding=None,
-                rpath=None, fpath=None, tz='UTC'):
+                rpath=None, fpath=None, tz='UTC', ts_strs=None):
     """Update a PostgreSQL table using WRDS SAS data.
 
     Parameters
@@ -682,6 +697,17 @@ def wrds_update(table_name, schema,
 
     fpath: string [Optional]
         Path to local SAS file. Requires local SAS.
+
+    tz: string [Optional]
+        Time zone to be used in interpreting SAS data.
+        For example, `America/New_York` or `UTC`.
+        Default is 'UTC'.
+    
+    ts_strs: dict of strings [Optional]
+        Variables encoded as text in SAS that should be interpreted as timestamps.
+        Also set `col_types` to `timestamptz` for these variables and select the 
+        appropriate `tz` value. If strings in SAS encode time zones, then `tz` should
+        have no effect.
     
     Returns
     -------
@@ -746,7 +772,7 @@ def wrds_update(table_name, schema,
                    create_roles=create_roles,
                    where=where, sas_schema=sas_schema, 
                    sas_encoding=sas_encoding,
-                   tz=tz)
+                   tz=tz, ts_strs=ts_strs)
         set_table_comment(alt_table_name, schema, modified, engine)
         
         if create_roles:
@@ -871,7 +897,9 @@ def wrds_update_pq(table_name, schema,
                    col_types=None,
                    encoding="utf-8", 
                    sas_schema=None, 
-                   sas_encoding=None):
+                   sas_encoding=None,
+                   tz="UTC",
+                   ts_strs=None):
     """Update a local parquet version of a WRDS table.
 
     Parameters
@@ -949,6 +977,17 @@ def wrds_update_pq(table_name, schema,
     sas_encoding: string
         Encoding of the SAS data file.
     
+    tz: string [Optional]
+        Time zone to be used in interpreting SAS data.
+        For example, `America/New_York` or `UTC`.
+        Default is 'UTC'.
+    
+    ts_strs: dict of strings [Optional]
+        Variables encoded as text in SAS that should be interpreted as timestamps.
+        Also set `col_types` to `timestamptz` for these variables and select the 
+        appropriate `tz` value. If strings in SAS encode time zones, then `tz` should
+        have no effect.
+    
     Returns
     -------
     Boolean indicating function reached the end.
@@ -956,8 +995,8 @@ def wrds_update_pq(table_name, schema,
     
     Examples
     ----------
-    >>> wrds_update_csv("dsi", "crsp", drop="usdval usdcnt")
-    >>> wrds_update_csv("feed21_bankruptcy_notification", 
+    >>> wrds_update_pq("dsi", "crsp", drop="usdval usdcnt")
+    >>> wrds_update_pq("feed21_bankruptcy_notification", 
                         "audit", drop="match: closest: prior:")
     """
     if not sas_schema:
@@ -997,7 +1036,9 @@ def wrds_update_pq(table_name, schema,
                 encoding=encoding, 
                 where=where,
                 sas_schema=sas_schema, 
-                sas_encoding=sas_encoding)
+                sas_encoding=sas_encoding,
+                tz=tz,
+                ts_strs=ts_strs)
     print("Converting temporary CSV to parquet.")
     make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
                                     schema=sas_schema, 
@@ -1032,7 +1073,8 @@ def wrds_to_csv(table_name, schema, csv_file,
                 fix_missing=False, fix_cr=False, drop=None, keep=None, 
                 obs=None, rename=None, where=None,
                 encoding="utf-8", 
-                sas_schema=None, sas_encoding=None):
+                sas_schema=None, sas_encoding=None,
+                tz="UTC", ts_strs=None):
           
     if not sas_schema:
         sas_schema = schema
@@ -1042,7 +1084,8 @@ def wrds_to_csv(table_name, schema, csv_file,
                          fix_missing=fix_missing, 
                          obs=obs, rename=rename,
                          where=where,
-                         encoding=encoding, sas_encoding=sas_encoding)
+                         encoding=encoding, sas_encoding=sas_encoding,
+                         tz=tz, ts_strs=ts_strs)
     with gzip.GzipFile(csv_file, mode='wb') as f:
         shutil.copyfileobj(p, f)
         f.close()
@@ -1153,7 +1196,8 @@ def wrds_update_csv(table_name, schema,
                     drop=None, keep=None, obs=None, rename=None,
                     where=None, alt_table_name=None,
                     encoding=None,
-                    sas_schema=None, sas_encoding=None):
+                    sas_schema=None, sas_encoding=None,
+                    tz="UTC", ts_strs=None):
     """Update a local gzipped CSV version of a WRDS table.
 
     Parameters
@@ -1222,6 +1266,17 @@ def wrds_update_csv(table_name, schema,
     sas_encoding: string
         Encoding of the SAS data file.
     
+    tz: string [Optional]
+        Time zone to be used in interpreting SAS data.
+        For example, `America/New_York` or `UTC`.
+        Default is 'UTC'.
+    
+    ts_strs: dict of strings [Optional]
+        Variables encoded as text in SAS that should be interpreted as timestamps.
+        Also set `col_types` to `timestamptz` for these variables and select the 
+        appropriate `tz` value. If strings in SAS encode time zones, then `tz` should
+        have no effect.
+    
     Returns
     -------
     Boolean indicating function reached the end.
@@ -1242,9 +1297,12 @@ def wrds_update_csv(table_name, schema,
 
     if not sas_schema:
         sas_schema = schema
-        
-    schema_dir = Path(data_dir, schema)
     
+    data_dir = os.path.expanduser(data_dir)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    schema_dir = Path(data_dir, schema)
     if not os.path.exists(schema_dir):
         os.makedirs(schema_dir)
     
@@ -1277,9 +1335,12 @@ def wrds_update_csv(table_name, schema,
                 where=where,
                 encoding=encoding,
                 sas_schema=sas_schema, 
-                sas_encoding=sas_encoding)
+                sas_encoding=sas_encoding,
+                tz=tz,
+                ts_strs=ts_strs)
     set_modified_csv(csv_file, modified)
-    print(f"Completed file download at {get_now()} UTC.\n")
+    print(f"Completed file download at {get_now()} UTC.")
+    print(f"CSV file: {csv_file}\n")
     return True
 
 def get_type_dict(table, schema, engine):
