@@ -842,10 +842,10 @@ def create_role(engine, role):
     process_sql("CREATE ROLE %s" % role, engine)
     return True
 
-def get_pg_tables(schema, engine, keys=False):
+def get_pg_tables(schema, engine, keys=False, views=False):
 
     metadata = MetaData()    
-    metadata.reflect(bind=engine, schema=schema)
+    metadata.reflect(bind=engine, schema=schema, views=views)
     
     if keys:
         table_list = [key for key in metadata.tables.keys()]
@@ -864,15 +864,34 @@ def get_wrds_url(wrds_id):
     dbname = "wrds"
     return f"postgresql+psycopg://{wrds_id}@{host}:{port}/{dbname}"
 
-def get_wrds_tables(schema, wrds_id=None):
+def get_wrds_tables(schema, wrds_id=None, views=False):
+    """Update a PostgreSQL table using WRDS SAS data.
 
+    Parameters
+    ----------
+    schema: 
+        Name of WRDS POstgreSQL schema.
+
+    wrds_id: string [Optional]
+        The WRDS ID to be use to access WRDS SAS. 
+        Default is to use the environment value `WRDS_ID`
+
+    views: boolean [Optional]
+        Whether views should be returned.
+        Default is False.
+    
+    Returns
+    -------
+    tables: List of strings
+        List of names of tables in the WRDS schema.
+    """
     if not wrds_id:
         wrds_id = os.getenv("WRDS_ID")
     wrds_url = get_wrds_url(wrds_id)
     wrds_engine = create_engine(wrds_url,
                                 connect_args = {'sslmode':'require'})
     
-    return get_pg_tables(schema, wrds_engine)
+    return get_pg_tables(schema, wrds_engine, views=views)
 
 def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR")):
     
