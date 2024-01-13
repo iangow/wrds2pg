@@ -28,7 +28,7 @@ warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 def get_now():
     return strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
-def get_process(sas_code, wrds_id=wrds_id, fpath=None):
+def get_process(sas_code, wrds_id=wrds_id, fpath=None, gzip=False):
     """Update a local CSV version of a WRDS table.
 
     Parameters
@@ -69,6 +69,8 @@ def get_process(sas_code, wrds_id=wrds_id, fpath=None):
         client.connect('wrds-cloud-sshkey.wharton.upenn.edu',
                        username=wrds_id, compress=False)
         command = "qsas -stdio -noterminal"
+        if gzip:
+            command += " | gzip"
         stdin, stdout, stderr = client.exec_command(command)
         stdin.write(sas_code)
         stdin.close()
@@ -412,7 +414,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop=None, keep=None, fix_cr = False, 
                      fix_missing = False, obs=None, rename=None, where=None,
                      encoding=None, sas_encoding=None, 
-                     tz="UTC", ts_strs=None):
+                     tz="UTC", ts_strs=None, gzip=False):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
                             rpath=rpath, fpath=fpath, schema=schema, 
                             drop=drop, rename=rename, keep=keep, 
@@ -421,7 +423,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                             encoding=encoding, sas_encoding=sas_encoding,
                             tz=tz, ts_strs=ts_strs)
     
-    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
+    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath, gzip=gzip)
     return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename=None, 
@@ -1074,7 +1076,7 @@ def wrds_to_csv(table_name, schema, csv_file,
                 obs=None, rename=None, where=None,
                 encoding="utf-8", 
                 sas_schema=None, sas_encoding=None,
-                tz="UTC", ts_strs=None):
+                tz="UTC", ts_strs=None, wrds_gz=False):
           
     if not sas_schema:
         sas_schema = schema
@@ -1085,11 +1087,16 @@ def wrds_to_csv(table_name, schema, csv_file,
                          obs=obs, rename=rename,
                          where=where,
                          encoding=encoding, sas_encoding=sas_encoding,
-                         tz=tz, ts_strs=ts_strs)
-    with gzip.GzipFile(csv_file, mode='wb') as f:
-        shutil.copyfileobj(p, f)
-        f.close()
-        
+                         tz=tz, ts_strs=ts_strs, gzip=wrds_gz)
+    if wrds_gz:
+        with open(csv_file, 'wb') as f:
+            shutil.copyfileobj(p, f)
+            f.close()
+    else:
+        with gzip.GzipFile(csv_file, mode='wb') as f:
+            shutil.copyfileobj(p, f)
+            f.close()
+
 def get_modified_pq(file_name):
     
     if os.path.exists(file_name):
