@@ -125,7 +125,7 @@ def code_row(row):
     else:
         return 'text'
 
-def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
+def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="UTF-8"):
     """Function that runs SAS code on WRDS or local server
     and returns a Pandas data frame.
 
@@ -143,6 +143,7 @@ def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
 
     encoding: string
         Encoding to be used to decode output from SAS.
+        Default is `UTF-8`.
     
     Returns
     -------
@@ -290,21 +291,21 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         fix_cr_code = ""
 
     if fpath:
-        libname_stmt = "libname %s '%s';" % (schema, fpath)
+        libname_stmt = f"libname {schema} '{fpath}';"
     elif rpath:
-        libname_stmt = "libname %s '%s';" % (schema, rpath)
+        libname_stmt = f"libname {schema} '{rpath}';"
     else:
         libname_stmt = ""
 
     if rename:
-        rename_str = " rename=(" + rename + ")"
+        rename_str = f" rename=({rename})"
     else:
         rename_str = ""
         
     if not sas_encoding:
         sas_encoding_str=""
     else:
-        sas_encoding_str="(encoding='" + sas_encoding + "')"
+        sas_encoding_str=f"(encoding='{sas_encoding}')"
 
     if fix_missing or drop or obs or keep or col_types or where:
         
@@ -396,7 +397,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                     {timestamps_str}
             run;
 
-            proc export data={new_table}(encoding="wlatin1") 
+            proc export data={new_table}(encoding="{encoding}") 
                 outfile=stdout dbms=csv;
             run;"""
     else:
@@ -406,7 +407,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             {libname_stmt}
 
             proc export data={schema}.{table_name}({rename_str} 
-                              encoding="wlatin1") outfile=stdout dbms=csv;
+                              encoding="{encoding}") outfile=stdout dbms=csv;
             run;"""
     return sas_code        
     
@@ -515,7 +516,7 @@ def set_table_comment(table_name, schema, comment, engine):
 def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                fpath=None, rpath=None, fix_missing=False, fix_cr=False, 
                drop=None, obs=None, rename=None, keep=None, where=None, ts_strs=None,
-               alt_table_name = None, encoding=None, col_types=None, create_roles=True,
+               alt_table_name=None, encoding=None, col_types=None, create_roles=True,
                sas_schema=None, sas_encoding=None, tz='UTC'):
 
     if not alt_table_name:
@@ -531,7 +532,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                                     col_types=col_types,
                                     sas_schema=sas_schema)
 
-    process_sql('DROP TABLE IF EXISTS "' + schema + '"."' + alt_table_name + '" CASCADE', 
+    process_sql(f'DROP TABLE IF EXISTS "{schema}"."{alt_table_name}" CASCADE', 
                 engine)
         
     # Create schema (and associated role) if necessary
@@ -542,7 +543,7 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
         if create_roles:
             if not role_exists(engine, schema):
                 create_role(engine, schema)
-            process_sql("ALTER SCHEMA " + schema + " OWNER TO " + schema, engine)
+            process_sql(f"ALTER SCHEMA {schema} OWNER TO {schema}", engine)
             if not role_exists(engine, "%s_access" % schema):
                 create_role(engine, "%s_access" % schema)
             process_sql("GRANT USAGE ON SCHEMA " + schema + " TO " + 
@@ -554,11 +555,13 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
     p = get_wrds_process(table_name=table_name, fpath=fpath, rpath=rpath,
                          schema=sas_schema, wrds_id=wrds_id,
                          drop=drop, keep=keep, fix_cr=fix_cr, 
+                         encoding=encoding,
                          fix_missing=fix_missing, ts_strs=ts_strs,
                          obs=obs, rename=rename, where=where,
                          sas_encoding=sas_encoding, tz=tz)
 
-    res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding, tz=tz)
+    res = wrds_process_to_pg(alt_table_name, schema, engine, p, 
+                             tz=tz)
     print(f"Completed file import at {get_now()} UTC.\n")
 
     return res
@@ -602,7 +605,7 @@ def wrds_update(table_name, schema,
                 obs=None, rename=None, where=None,  
                 alt_table_name=None, 
                 col_types=None, create_roles=True,
-                encoding=None, sas_schema=None, sas_encoding=None,
+                encoding="UTF-8", sas_schema=None, sas_encoding=None,
                 rpath=None, fpath=None, tz='UTC', ts_strs=None):
     """Update a PostgreSQL table using WRDS SAS data.
 
@@ -686,6 +689,7 @@ def wrds_update(table_name, schema,
         
     encoding: string  [Optional]
         Encoding to be used for text emitted by SAS.
+        Default is `UTF-8`.
     
     sas_schema: string [Optional]
         WRDS schema for the SAS data file. This can differ from the PostgreSQL schema in some cases.
@@ -916,7 +920,7 @@ def wrds_update_pq(table_name, schema,
                    where=None,
                    alt_table_name=None,
                    col_types=None,
-                   encoding="utf-8", 
+                   encoding="UTF-8", 
                    sas_schema=None, 
                    sas_encoding=None,
                    tz="UTC",
@@ -990,6 +994,7 @@ def wrds_update_pq(table_name, schema,
         
     encoding: string  [Optional]
         Encoding to be used for text emitted by SAS.
+        Default is `UTF-8`.
     
     sas_schema: string [Optional]
         WRDS schema for the SAS data file. This can differ from the PostgreSQL 
@@ -1221,7 +1226,7 @@ def wrds_update_csv(table_name, schema,
                     force=False, fix_missing=False, fix_cr=False,
                     drop=None, keep=None, obs=None, rename=None,
                     where=None, alt_table_name=None,
-                    encoding=None,
+                    encoding="UTF-8",
                     sas_schema=None, sas_encoding=None,
                     tz="UTC", ts_strs=None):
     """Update a local gzipped CSV version of a WRDS table.
@@ -1284,6 +1289,7 @@ def wrds_update_csv(table_name, schema,
     
     encoding: string  [Optional]
         Encoding to be used for text emitted by SAS.
+        Default is `UTF-8`.
     
     sas_schema: string [Optional]
         WRDS schema for the SAS data file. This can differ from the PostgreSQL 
