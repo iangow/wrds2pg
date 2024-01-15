@@ -275,7 +275,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                                     wrds_id=wrds_id,
                                     fpath=fpath, rpath=rpath, 
                                     drop=drop, rename=rename, keep=keep)
-
+    
     col_types = make_table_data["col_types"]
     
     if fix_cr:
@@ -305,7 +305,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
     if not sas_encoding:
         sas_encoding_str=""
     else:
-        sas_encoding_str=f"(encoding='{sas_encoding}')"
+        sas_encoding_str=f" encoding='{sas_encoding}'"
 
     if fix_missing or drop or obs or keep or col_types or where:
         
@@ -331,7 +331,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
         
         if obs or drop or rename or keep:
             sas_table = table_name + "(" + drop_str + keep_str + \
-                                           obs_str + rename_str + ")"
+                                           obs_str + rename_str + sas_encoding_str + ")"
         else:
             sas_table = table_name
 
@@ -381,9 +381,9 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             options timezone='{tz}';
             
             {libname_stmt}
-            * Fix missing values;
+
             data {new_table};
-                set {schema}.{sas_table}{sas_encoding_str};
+                set {schema}.{sas_table};
                 {ts_str}
                 {fix_cr_code}
                 {fix_missing_str}
@@ -397,7 +397,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                     {timestamps_str}
             run;
 
-            proc export data={new_table}(encoding="{encoding}") 
+            proc export data={new_table}({sas_encoding_str})
                 outfile=stdout dbms=csv;
             run;"""
     else:
@@ -407,7 +407,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None, rpath=None,
             {libname_stmt}
 
             proc export data={schema}.{table_name}({rename_str} 
-                              encoding="{encoding}") outfile=stdout dbms=csv;
+                              encoding="{sas_encoding_str}") outfile=stdout dbms=csv;
             run;"""
     return sas_code        
     
@@ -415,7 +415,7 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                      drop=None, keep=None, fix_cr = False, 
                      fix_missing = False, obs=None, rename=None, where=None,
                      encoding=None, sas_encoding=None, 
-                     tz="UTC", ts_strs=None, gzip=False):
+                     tz="UTC", ts_strs=None, gzip=False, return_code=False):
     sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
                             rpath=rpath, fpath=fpath, schema=schema, 
                             drop=drop, rename=rename, keep=keep, 
@@ -423,9 +423,11 @@ def get_wrds_process(table_name, schema, wrds_id=None, fpath=None, rpath=None,
                             obs=obs, where=where,
                             encoding=encoding, sas_encoding=sas_encoding,
                             tz=tz, ts_strs=ts_strs)
-    
-    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath, gzip=gzip)
-    return(p)
+    if return_code:
+        return sas_code
+    else:
+        p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath, gzip=gzip)
+        return(p)
 
 def wrds_to_pandas(table_name, schema, wrds_id, rename=None, 
                    drop=None, obs=None, encoding=None, fpath=None, rpath=None,
@@ -448,29 +450,34 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename=None,
 
     return(df)
 
-def proc_contents(table_name, sas_schema=None, wrds_id=os.getenv("WRDS_ID"), rpath=None, encoding=None):
-    if not encoding:
-        encoding = "utf-8"
+def proc_contents(table_name, sas_schema=None, wrds_id=os.getenv("WRDS_ID"), rpath=None, 
+                  sas_encoding=None):
+    if not sas_encoding:
+        sas_encoding = "utf-8"
     
     if not sas_schema:
         sas_schema = rpath
     
-    sas_code = f"PROC CONTENTS data={sas_schema}.{table_name}(encoding='{encoding}');"
+    sas_code = f"PROC CONTENTS data={sas_schema}.{table_name}(encoding='{sas_encoding}');"
 
     p = get_process(sas_code, wrds_id)
-
-    return p.readlines()
-
-def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
-                     encoding=None, rpath=None):
-    
-    contents = proc_contents(table_name, sas_schema, wrds_id, rpath, encoding)
+    contents = p.readlines()
     if len(contents) == 0:
         print(f"Table {sas_schema}.{table_name} not found.")
         return None
+    else:
+        return contents
 
+def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
+                     sas_encoding=None, rpath=None):
+    
+    contents = proc_contents(table_name, sas_schema, wrds_id, rpath, 
+                             sas_encoding=sas_encoding)
     modified = ""
     next_row = False
+    if not contents:
+        return None
+    
     for line in contents:
         if next_row:
             line = re.sub(r"^\s+(.*)\s+$", r"\1", line)
@@ -561,12 +568,14 @@ def wrds_to_pg(table_name, schema, engine, wrds_id=None,
                          sas_encoding=sas_encoding, tz=tz)
 
     res = wrds_process_to_pg(alt_table_name, schema, engine, p, 
+                             encoding=encoding, 
                              tz=tz)
     print(f"Completed file import at {get_now()} UTC.\n")
 
     return res
 
-def wrds_process_to_pg(table_name, schema, engine, p, encoding=None, tz='UTC'):
+def wrds_process_to_pg(table_name, schema, engine, p, encoding=None, 
+                       tz='UTC'):
     
     if not encoding:
         encoding = "UTF8"
@@ -746,7 +755,8 @@ def wrds_update(table_name, schema,
         
         # 2. Get modified date from WRDS
         modified = get_modified_str(table_name, sas_schema, wrds_id, 
-                                    encoding=encoding, rpath=rpath)
+                                    sas_encoding=sas_encoding, 
+                                    rpath=rpath)
         if not modified:
             return False
     else:
@@ -1036,7 +1046,7 @@ def wrds_update_pq(table_name, schema,
                 
     modified = get_modified_str(table_name=table_name, 
                                 sas_schema=sas_schema, wrds_id=wrds_id, 
-                                encoding=encoding)
+                                sas_encoding=sas_encoding)
     if not modified:
         return False
     
@@ -1339,7 +1349,8 @@ def wrds_update_csv(table_name, schema,
         os.makedirs(schema_dir)
     
     csv_file = Path(data_dir, schema, alt_table_name).with_suffix('.csv.gz')
-    modified = get_modified_str(table_name, sas_schema, wrds_id)
+    modified = get_modified_str(table_name, sas_schema, wrds_id,
+                                sas_encoding=sas_encoding)
     if not modified:
         return False
 
