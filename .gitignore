@@ -7,3 +7,4 @@ dist
 build
 data
 .ipynb_checkpoints
+wrds2pg/__pycache__
