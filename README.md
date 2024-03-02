@@ -20,10 +20,12 @@ To use public-key authentication to access WRDS, follow hints taken from [here](
 Copy that key to the WRDS server from the terminal on your computer. 
 (Note that this code assumes you have a directory `.ssh` in your home directory. If not, log into WRDS via SSH, then type `mkdir ~/.ssh` to create this.) 
 Here's code (for me) to create the key and send it to WRDS:
-```
+
+```bash
 ssh-keygen -t rsa
 cat ~/.ssh/id_rsa.pub | ssh iangow@wrds-cloud.wharton.upenn.edu "cat >> ~/.ssh/authorized_keys"
 ```
+
 Use an empty passphrase in setting up the key so that the scripts can run without user intervention.
 
 ### 3. PostgreSQL
@@ -42,7 +44,7 @@ Environment variables that the code can use include:
 
 Once can set these environment variables in (say) `~/.zprofile`:
 
-```
+```bash
 export PGHOST="localhost"
 export PGDATABASE="crsp"
 export WRDS_ID="iangow"
@@ -81,17 +83,17 @@ If you are at the home directory of this git repo, you can import and use the so
 
 To install it from Github:
 
-```
+```bash
 sudo -H pip3 install git+https://github.com/iangow/wrds2pg --upgrade
 ```
 
 This software is also available from PyPI. To install it from [PyPI](https://pypi.org/project/wrds2pg/):
 
-```
+```bash
 pip3 install wrds2pg
 ```
 Example usage:
-```py
+```python
 from wrds2pg import wrds_update
 
 # 1. Download crsp.mcti from wrds and upload to pg as crps.mcti

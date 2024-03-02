@@ -413,7 +413,7 @@ def wrds_to_pandas(table_name, schema, wrds_id, rename=None,
     p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, 
                          rename=rename, obs=obs, where=where, 
                          col_types=col_types,
-                         fpath=fpath, fpath=fpath)
+                         fpath=fpath)
     df = pd.read_csv(StringIO(p.read().decode(encoding)))
     df.columns = map(str.lower, df.columns)
     p.close()
