@@ -371,7 +371,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
                     {timestamps_str}
             run;
 
-            proc export data={new_table}(encoding="wlatin1") 
+            proc export data={new_table}(encoding="utf-8") 
                 outfile=stdout dbms=csv;
             run;"""
     else:
@@ -381,7 +381,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             {libname_stmt}
 
             proc export data={schema}.{table_name}({rename_str} 
-                              encoding="wlatin1") outfile=stdout dbms=csv;
+                              encoding="utf-8") outfile=stdout dbms=csv;
             run;"""
     return sas_code        
     
