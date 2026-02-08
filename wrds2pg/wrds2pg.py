@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import csv
 import os
 import re
 import shutil
@@ -35,6 +36,23 @@ ods results off;
 
 options nodate nonumber nocenter;
 """
+
+
+_PG_TO_ARROW = {
+    "text": pa.string(),
+    "varchar": pa.string(),
+    "character varying": pa.string(),
+    "integer": pa.int64(),
+    "int": pa.int64(),
+    "bigint": pa.int64(),
+    "float8": pa.float64(),
+    "double precision": pa.float64(),
+    "real": pa.float32(),
+    "date": pa.date32(),
+    "timestamp": pa.timestamp("us"),
+    "timestamp without time zone": pa.timestamp("us"),
+    "time": pa.time64("us"),
+}
 
 @contextmanager
 def get_process_stream(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
@@ -102,51 +120,42 @@ def get_process_stream(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
     else:
         raise ValueError("Either `wrds_id` or `fpath` must be provided.")
 
-def code_row(row):
-
-    """A function to code PostgreSQL data types using output from SAS's 
-    PROC CONTENTS. Supported types that can be returned include FLOAT8, INTEGER,
-    TEXT, TIMESTAMP, TIME, and DATE.
-
-    Parameters
-    ----------
-    row: A row from a Pandas data frame 
-
-    Returns:
-    -------
-    type:
-        The PostgreSQL type inferred for the row    
+def code_row_dict(row):
     """
-    format_ = row['format']
-    formatd = row['formatd']
-    formatl = row['formatl']
-    col_type = row['type']
+    row: dict with keys: name,type,format,formatl,formatd (strings from CSV)
+    """
+    # normalize
+    fmt = (row.get("format") or "").strip()
+    col_type = int(row.get("type") or 0)
 
-    if col_type==2:
-        return 'text'
+    # SAS PROC CONTENTS: type=2 is character
+    if col_type == 2:
+        return "text"
 
-    if not pd.isnull(format_):
-        if re.search(r'datetime', format_, re.I):
-            return 'timestamp'
-        elif format_ =='TIME8.':
+    # formatd/formatl may be blank
+    formatd = int(float(row.get("formatd") or 0))
+    formatl = int(float(row.get("formatl") or 0))
+
+    # date/time detection
+    if fmt:
+        if re.search(r"datetime", fmt, re.I):
+            return "timestamp"
+        if fmt.upper() == "TIME8." or fmt.upper() == "TOD" or re.search(r"time", fmt, re.I):
             return "time"
-        elif re.search(r'time', format_, re.I):
-            return "time"
-        elif format_=='TOD':
-            return "time"
-        elif re.search(r'(date|yymmdd|mmddyy)', format_, re.I):
+        if re.search(r"(date|yymmdd|mmddyy)", fmt, re.I):
             return "date"
 
-    if format_ == "BEST":
-        return 'float8'
+    # numeric heuristics (your existing logic)
+    if fmt.upper() == "BEST":
+        return "float8"
     if formatd != 0:
-        return 'float8'
+        return "float8"
     if formatd == 0 and formatl != 0:
-        return 'integer'
+        return "integer"
     if formatd == 0 and formatl == 0:
-        return 'float8'
-    else:
-        return 'text'
+        return "float8"
+
+    return "text"
 
 def sas_to_pandas(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
     """Function that runs SAS code on WRDS or local server
@@ -174,98 +183,134 @@ def sas_to_pandas(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
     df.columns = df.columns.str.lower()
     return df
 
-def make_sas_code(table_name, schema, wrds_id=None, fpath=None, 
-                  drop=None, keep=None, rename=None, 
-                  sas_schema=None):
-    if not wrds_id:
-        wrds_id = os.environ['WRDS_ID']
-
-    if not sas_schema:
+def make_sas_code(
+    table_name,
+    schema,
+    fpath=None,
+    drop=None,
+    keep=None,
+    rename=None,
+    sas_schema=None,
+):
+    if sas_schema is None:
         sas_schema = schema
+
+    # Local SAS mode: assign libref to a directory
+    libname_stmt = f"libname {sas_schema} '{fpath}';" if fpath else ""
+
+    rename_str = f"rename=({rename})" if rename else ""
+    drop_str = f"drop={drop}" if drop else ""
+    keep_str = f"keep={keep}" if keep else ""
+
+    # Build dataset options cleanly (avoid extra spaces)
+    opts = " ".join(x for x in [drop_str, keep_str, rename_str] if x)
+
+    sas_code = f"""
+        {libname_stmt}
         
-    if fpath:
-        libname_stmt = "libname %s '%s';" % (sas_schema, fpath)
-    else:
-        libname_stmt = ""
-
-    sas_template = """
-        options nonotes nosource;
-        %s
-
-        * Use PROC CONTENTS to extract the information desired.;
-        proc contents data=%s.%s(%s %s obs=1 %s) out=schema noprint;
+        * Extract variable metadata without printing the pretty report.;
+        proc contents data={sas_schema}.{table_name}({opts}) out=_meta noprint;
         run;
-
-        proc sort data=schema;
-            by varnum;
+        
+        proc sort data=_meta;
+          by varnum;
         run;
-
-        * Now dump it out to a CSV file;
-        proc export data=schema(keep=name format formatl 
-                                      formatd length type)
-            outfile=stdout dbms=csv;
+        
+        * Emit machine-readable CSV to stdout.;
+        proc export data=_meta(keep=name type format formatl formatd length)
+          outfile=stdout
+          dbms=csv
+          replace;
         run;
     """
+    return sas_code.strip() + "\n"
 
-    if rename:
-        rename_str = "rename=(" + rename + ") "
-    else:
-        rename_str = ""
+def get_table_sql(
+    table_name,
+    schema,                    # target Postgres schema
+    wrds_id=None,
+    fpath=None,                # local SAS library path (optional)
+    drop=None,
+    keep=None,
+    rename=None,
+    return_sql=True,
+    alt_table_name=None,
+    col_types=None,
+    sas_schema=None,           # SAS libref (WRDS or local)
+    encoding="utf-8",
+):
+    # --- resolve mode ---
+    if wrds_id is None and fpath is None:
+        wrds_id = os.environ.get("WRDS_ID")
 
-    if drop:
-        drop_str = "drop=" + drop 
-    else:
-        drop_str = ""
-        
-    if keep:
-        keep_str = "keep=" + keep 
-    else:
-        keep_str = ""
+    if wrds_id is None and fpath is None:
+        raise ValueError(
+            "You must provide `fpath` or `wrds_id` "
+            "(or set the `WRDS_ID` environment variable)."
+        )
 
-    sas_code = sas_template % (libname_stmt, sas_schema, table_name, drop_str,
-                               keep_str, rename_str)
-    return sas_code
-                             
-
-def get_table_sql(table_name, schema, wrds_id=None,
-                  fpath=None, drop=None, keep=None, rename=None, 
-                  return_sql=True, 
-                  alt_table_name=None, col_types=None, sas_schema=None):
-                      
-    if not alt_table_name:
+    # --- defaults ---
+    if alt_table_name is None:
         alt_table_name = table_name
-        
-    sas_code = make_sas_code(table_name=table_name, 
-                             schema = schema, wrds_id=wrds_id,
-                             fpath=fpath, drop=drop, keep=keep, 
-                             rename=rename, 
-                             sas_schema=sas_schema)
-    
-    # Run the SAS code on the WRDS server and get the result
-    df = sas_to_pandas(sas_code, wrds_id, fpath)
-    
-    # Make all variable names lower case, get
-    # inferred types, then set explicit types if given
-    names = [name.lower() for name in df['name']]
-    types = df.apply(code_row, axis=1)
-    col_types_inferred = dict(zip(names, types))
+    if sas_schema is None:
+        # local mode: you can choose "work" or require explicit; historically you used fpath
+        sas_schema = schema if wrds_id is not None else "work"
+
+    # --- generate SAS that emits CSV metadata to stdout ---
+    sas_code = make_sas_code(
+        table_name=table_name,
+        schema=schema,          # only used to default sas_schema inside make_sas_code if you want
+        sas_schema=sas_schema,
+        fpath=fpath,
+        drop=drop,
+        keep=keep,
+        rename=rename,
+    )
+
+    # --- run SAS, capture stdout text ---
+    with get_process_stream(
+        sas_code,
+        wrds_id=wrds_id,
+        fpath=fpath,
+        encoding=encoding,
+    ) as stream:
+        text = stream.read()
+
+    # --- parse CSV metadata; normalize header keys to lowercase ---
+    reader = csv.DictReader(io.StringIO(text))
+    rows = [{k.strip().lower(): v for k, v in row.items()} for row in reader]
+
+    if not rows:
+        raise RuntimeError(
+            f"No metadata returned for {sas_schema}.{table_name}. "
+            "Check SAS log/stderr (likely table not found)."
+        )
+    if "name" not in rows[0]:
+        raise RuntimeError(
+            f"Unexpected PROC EXPORT headers: {list(rows[0].keys())}\n"
+            "First 20 lines of output:\n" + "\n".join(text.splitlines()[:20])
+        )
+
+    # --- infer PostgreSQL types ---
+    names = [r["name"].strip().lower() for r in rows]
+    inferred = {n: code_row_dict(r) for n, r in zip(names, rows)}
+
+    # override inferred types if provided
     if col_types:
-        for var in col_types.keys():
-            col_types_inferred[var] = col_types[var]
-    
-    rows_str = ", ".join(['"' + name + '" ' + 
-                          col_types_inferred[name] for name in names])
-    
-    make_table_sql = f'CREATE TABLE "{schema}"."{alt_table_name}" ({rows_str})'
-    
+        for k, v in col_types.items():
+            inferred[k.lower()] = v
+
+    rows_str = ", ".join([f'"{n}" {inferred[n]}' for n in names])
+    create_sql = f'CREATE TABLE "{schema}"."{alt_table_name}" ({rows_str})'
+
     if return_sql:
-        return {"sql": make_table_sql, 
-                "names": names,
-                "col_types": col_types_inferred}
-    else:
-        df['name'] = names
-        df['postgres_type'] = [col_types_inferred[name] for name in names]
-        return df
+        return {"sql": create_sql, "names": names, "col_types": inferred}
+
+    # non-SQL return: a list of dicts (keeps pandas optional)
+    out = []
+    for n, r in zip(names, rows):
+        out.append({**r, "name": n, "postgres_type": inferred[n]})
+    return out
 
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
                      drop=None, keep=None, fix_cr = False, 
@@ -1288,30 +1333,24 @@ def get_modified_pq(file_name):
 
     return value.decode("utf-8")
 
-
-_PG_TO_ARROW = {
-    "integer": pa.int32(),
-    "bigint": pa.int64(),
-    "double precision": pa.float64(),
-    "real": pa.float32(),
-    "text": pa.string(),
-    "varchar": pa.string(),
-    "date": pa.date32(),
-    "timestamp": pa.timestamp("us"),
-    "boolean": pa.bool_(),
-}
-
 def _arrow_convert_options(names, col_types):
-    # col_types: dict name -> postgres type string
+    col_types = col_types or {}
+
     column_types = {}
     for name in names:
-        t = col_types.get(name)
-        if t is None:
-            continue
-        t_norm = t.lower()
-        if t_norm in _PG_TO_ARROW:
-            column_types[name] = _PG_TO_ARROW[t_norm]
-    return pacsv.ConvertOptions(column_types=column_types)
+        t = (col_types.get(name) or "").strip().lower()
+        pa_t = _PG_TO_ARROW.get(t)
+
+        # If unknown, DON'T force a type (Arrow will infer)
+        if pa_t is not None:
+            column_types[name] = pa_t
+
+    return pacsv.ConvertOptions(
+        column_types=column_types,
+        strings_can_be_null=True,
+        # Optional: treat SAS missings as nulls if present in CSV
+        null_values=[""],
+    )
 
 def csv_to_pq_arrow_stream(
     csv_file,
