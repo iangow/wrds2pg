@@ -1,8 +1,7 @@
 import setuptools
 
-with open("README.md", "r") as f:
+with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
-    print(long_description)
 
 setuptools.setup(
     name="wrds2pg",
@@ -14,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/iangow/wrds2pg/",
     packages=setuptools.find_packages(),
-    install_requires=['pandas', 'sqlalchemy>=2.0.0', 'paramiko', 'psycopg[binary]', 'pyarrow', 'duckdb'],
+    install_requires=['pandas', 'sqlalchemy>=2.0.0', 'paramiko', 'psycopg[binary]', 'pyarrow'],
     python_requires=">=3",
     classifiers=[
         "Programming Language :: Python :: 3",
