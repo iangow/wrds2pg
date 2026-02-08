@@ -1,82 +1,107 @@
-# Run the SAS code on the WRDS server and get the result
-import pandas as pd
-from io import StringIO
-import re, subprocess, os, paramiko
-from time import gmtime, strftime
-import duckdb
-from pathlib import Path
+from __future__ import annotations
+
+import io
+import os
+import re
 import shutil
-import gzip
+import subprocess
 import tempfile
-import pyarrow.parquet as pq
-import pyarrow as pa
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 import time
-from sqlalchemy import create_engine, inspect
-from sqlalchemy import text, MetaData, Table
-from sqlalchemy.engine import reflection
-from sqlalchemy.dialects.postgresql import dialect
-from sqlalchemy import MetaData
 import warnings
+import gzip
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+from io import StringIO
 
-client = paramiko.SSHClient()
-wrds_id = os.getenv("WRDS_ID")
+import pandas as pd
+import paramiko
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pyarrow.csv as pacsv
+from sqlalchemy import create_engine, inspect, text
 
-warnings.filterwarnings(action='ignore', module='.*paramiko.*')
+# warnings.filterwarnings(action='ignore', module='.*paramiko.*')
 
 def get_now():
-    return strftime("%Y-%m-%d %H:%M:%S", gmtime())
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-def get_process(sas_code, wrds_id=wrds_id, fpath=None):
-    """Update a local CSV version of a WRDS table.
+SAS_STDOUT_PREAMBLE = """\
+ods listing;
+ods html close;
+ods pdf close;
+ods results off;
 
-    Parameters
-    ----------
-    sas_code: 
-        SAS code to be run to yield output. 
-                      
-    wrds_id: string
-        Optional WRDS ID to be use to access WRDS SAS. 
-        Default is to use the environment value `WRDS_ID`
-    
-    fpath: 
-        Optional path to a local SAS file.
-    
-    Returns
-    -------
-    The STDOUT component of the process as a stream.
+options nodate nonumber nocenter;
+"""
+
+@contextmanager
+def get_process_stream(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
     """
-    if client:
-        client.close()
+    Yield a *text* stream containing SAS output. Always cleans up resources.
+    Exactly one of (fpath, wrds_id) should be provided.
+    """
+    sas_code = with_stdout_preamble(sas_code)
+    if fpath is not None:
+        proc = subprocess.Popen(
+            ["sas", "-stdio", "-noterminal"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding=encoding,
+        )
+        try:
+            assert proc.stdin is not None
+            proc.stdin.write(sas_code)
+            proc.stdin.close()
 
-    if fpath:
-        p=subprocess.Popen(['sas', '-stdio', '-noterminal'],
-                           stdin=subprocess.PIPE,
-                           stdout=subprocess.PIPE, 
-                           stderr=subprocess.PIPE,
-                           universal_newlines=True)
-        p.stdin.write(sas_code)
-        p.stdin.close()
-        return p.stdout
+            assert proc.stdout is not None
+            yield proc.stdout
 
-    elif wrds_id:
-        """Function runs SAS code on WRDS server and
-        returns result as pipe on stdout."""
+            rc = proc.wait()
+            if rc != 0:
+                err = proc.stderr.read() if proc.stderr else ""
+                raise RuntimeError(f"SAS exited with code {rc}.\n{err}")
+        finally:
+            # close pipes
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
+            # ensure process is gone
+            if proc.poll() is None:
+                proc.terminate()
+
+    elif wrds_id is not None:
+        client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.set_missing_host_key_policy(paramiko.WarningPolicy())
-        client.connect('wrds-cloud-sshkey.wharton.upenn.edu',
-                       username=wrds_id, compress=False)
-        command = "qsas -stdio -noterminal"
-        stdin, stdout, stderr = client.exec_command(command)
-        stdin.write(sas_code)
-        stdin.close()
+        client.connect(
+            "wrds-cloud-sshkey.wharton.upenn.edu",
+            username=wrds_id,
+            compress=False,
+        )
+        try:
+            stdin, stdout, stderr = client.exec_command("qsas -stdio -noterminal")
+            stdin.write(sas_code)
+            stdin.close()
 
-        channel = stdout.channel
-        # indicate that we're not going to write to that channel anymore
-        channel.shutdown_write()
-        return stdout
-  
+            # Paramiko stdout is a binary stream -> wrap as text
+            text_stdout = io.TextIOWrapper(stdout, encoding=encoding)
+
+            try:
+                yield text_stdout
+            finally:
+                text_stdout.close()
+                stderr.close()
+        finally:
+            client.close()
+
+    else:
+        raise ValueError("Either `wrds_id` or `fpath` must be provided.")
+
 def code_row(row):
 
     """A function to code PostgreSQL data types using output from SAS's 
@@ -123,44 +148,33 @@ def code_row(row):
     else:
         return 'text'
 
-def sas_to_pandas(sas_code, wrds_id=wrds_id, fpath=None, encoding="utf-8"):
-
+def sas_to_pandas(sas_code, wrds_id=None, fpath=None, encoding="utf-8"):
     """Function that runs SAS code on WRDS or local server
-    and returns a Pandas data frame.
+    and returns a Pandas data frame. One of `wrds_id`, the environment
+    variable `WRDS_ID`, or `fpath` must be set.
+    """
 
-     Parameters
-    ----------
-    sas_code: string
-        SAS code to be run to yield output. 
-                      
-    wrds_id: string
-        Optional WRDS ID to be use to access WRDS SAS. 
-        Default is to use the environment value `WRDS_ID`
-    
-    fpath: 
-        Optional path to a local SAS file.
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
 
-    encoding: string
-        Encoding to be used to decode output from SAS.
-    
-    Returns
-    -------
-    df: 
-        A Pandas data frame
-    """    
-    p = get_process(sas_code=sas_code, wrds_id=wrds_id, fpath=fpath)
+    if fpath is None and wrds_id is None:
+        raise ValueError(
+            "One of `wrds_id`, the environment variable `WRDS_ID`, "
+            "or `fpath` must be set."
+        )
 
-    if fpath:
-        df = pd.read_csv(StringIO(p.read()))
-    elif wrds_id:
-        df = pd.read_csv(StringIO(p.read().decode(encoding)))
-        
-    df.columns = map(str.lower, df.columns)
-    p.close()
+    with get_process_stream(
+        sas_code,
+        wrds_id=wrds_id,
+        fpath=fpath,
+        encoding=encoding,
+    ) as stream:
+        df = pd.read_csv(stream)
 
-    return(df)
+    df.columns = df.columns.str.lower()
+    return df
 
-def make_sas_code(table_name, schema, wrds_id=wrds_id, fpath=None, 
+def make_sas_code(table_name, schema, wrds_id=None, fpath=None, 
                   drop=None, keep=None, rename=None, 
                   sas_schema=None):
     if not wrds_id:
@@ -383,93 +397,155 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             proc export data={schema}.{table_name}({rename_str} 
                               encoding="utf-8") outfile=stdout dbms=csv;
             run;"""
-    return sas_code        
+    return sas_code
     
-def get_wrds_process(table_name, schema, wrds_id=None, fpath=None,
-                     drop=None, keep=None, fix_cr = False, 
-                     fix_missing = False, obs=None, rename=None, where=None,
-                     encoding=None, sas_encoding=None):
-    sas_code = get_wrds_sas(table_name=table_name, wrds_id=wrds_id,
-                            fpath=fpath, schema=schema, 
-                            drop=drop, rename=rename, keep=keep, 
-                            fix_cr=fix_cr, fix_missing=fix_missing, 
-                            obs=obs, where=where,
-                            encoding=encoding, 
-                            sas_encoding=sas_encoding)
-    
-    p = get_process(sas_code, wrds_id=wrds_id, fpath=fpath)
-    return(p)
+def get_wrds_process_stream(
+    table_name, schema, wrds_id=None, fpath=None,
+    drop=None, keep=None, fix_cr=False,
+    fix_missing=False, obs=None, rename=None, where=None,
+    encoding=None, sas_encoding=None,
+    stream_encoding="utf-8",
+):
+    sas_code = get_wrds_sas(
+        table_name=table_name, wrds_id=wrds_id, fpath=fpath, schema=schema,
+        drop=drop, rename=rename, keep=keep,
+        fix_cr=fix_cr, fix_missing=fix_missing,
+        obs=obs, where=where,
+        encoding=encoding, sas_encoding=sas_encoding,
+    )
 
-def wrds_to_pandas(table_name, schema, wrds_id, rename=None, 
-                   drop=None, obs=None, encoding=None, fpath=None,
-                   col_types=None, where=None, sas_schema=None):
+    return get_process_stream(
+        sas_code=sas_code,
+        wrds_id=wrds_id,
+        fpath=fpath,
+        encoding=stream_encoding,
+    )
 
-    if not encoding:
-        encoding = "utf-8"
+def wrds_to_pandas(
+    table_name,
+    schema,
+    wrds_id=None,
+    fpath=None,
+    *,
+    sas_schema=None,
+    encoding="utf-8",
+    drop=None,
+    rename=None,
+    obs=None,
+    where=None,
+):
+    if wrds_id is None and fpath is None:
+        wrds_id = os.environ.get("WRDS_ID")
 
-    if not sas_schema:
+    if fpath is None and wrds_id is None:
+        raise ValueError(
+            "You must provide `fpath` or `wrds_id` "
+            "(or set the `WRDS_ID` environment variable)."
+        )
+
+    if sas_schema is None:
         sas_schema = schema
 
-    p = get_wrds_process(table_name, sas_schema, wrds_id, drop=drop, 
-                         rename=rename, obs=obs, where=where, 
-                         col_types=col_types,
-                         fpath=fpath)
-    df = pd.read_csv(StringIO(p.read().decode(encoding)))
-    df.columns = map(str.lower, df.columns)
-    p.close()
+    with get_wrds_process_stream(
+        table_name=table_name,
+        schema=sas_schema,
+        wrds_id=wrds_id,
+        fpath=fpath,
+        drop=drop,
+        rename=rename,
+        obs=obs,
+        where=where,
+        stream_encoding=encoding,
+    ) as stream:
+        df = pd.read_csv(stream)
 
-    return(df)
+    df.columns = df.columns.str.lower()
+    return df
 
-def proc_contents(table_name, sas_schema=None, wrds_id=os.getenv("WRDS_ID"), 
-                  fpath=None, encoding=None):
-    if not encoding:
-        encoding = "utf-8"
-    
-    if not sas_schema:
-        sas_schema = fpath
-    
-    sas_code = f"PROC CONTENTS data={sas_schema}.{table_name}(encoding='{encoding}');"
 
-    p = get_process(sas_code, wrds_id)
 
-    return p.readlines()
+def with_stdout_preamble(sas_code: str) -> str:
+    return SAS_STDOUT_PREAMBLE + "\n" + sas_code
 
-def get_modified_str(table_name, sas_schema, wrds_id=wrds_id,
-                     encoding=None, fpath=None):
-    
-    contents = proc_contents(table_name, sas_schema, wrds_id, fpath, encoding)
-    if len(contents) == 0:
+def proc_contents(table_name, sas_schema=None, wrds_id=None, fpath=None, encoding="utf-8"):
+    if wrds_id is None and fpath is None:
+        wrds_id = os.environ.get("WRDS_ID")
+
+    if wrds_id is None and fpath is None:
+        raise ValueError(
+            "You must provide `fpath` or `wrds_id` "
+            "(or set the `WRDS_ID` environment variable)."
+        )
+
+    # WRDS mode requires a SAS libref
+    if wrds_id is not None and sas_schema is None:
+        raise ValueError("`sas_schema` must be provided for WRDS mode (e.g., 'crsp').")
+
+    # Local mode fallback
+    if wrds_id is None and sas_schema is None:
+        sas_schema = "work"
+
+    sas_code = f"PROC CONTENTS data={sas_schema}.{table_name}; RUN;"
+
+    with get_process_stream(
+        sas_code,
+        wrds_id=wrds_id,
+        fpath=fpath,
+        encoding=encoding,
+    ) as stream:
+        return stream.readlines()
+
+def get_modified_str(table_name, sas_schema, wrds_id=None, encoding="utf-8"):
+    contents = proc_contents(
+        table_name=table_name,
+        sas_schema=sas_schema,
+        wrds_id=wrds_id,
+        encoding=encoding,
+    )
+    if not contents:
         print(f"Table {sas_schema}.{table_name} not found.")
         return None
 
-    modified = ""
+    modified = None
     next_row = False
+
     for line in contents:
         if next_row:
             line = re.sub(r"^\s+(.*)\s+$", r"\1", line)
             line = re.sub(r"\s+$", "", line)
-            if not re.findall(r"Protection", line):
-                modified += " " + line.rstrip()
+            if "Protection" not in line:
+                modified = (modified or "") + " " + line.rstrip()
             next_row = False
 
         if re.match(r"Last Modified", line):
-            modified = re.sub(r"^Last Modified\s+(.*?)\s{2,}.*$",
-                              r"Last modified: \1", line)
-            modified = modified.rstrip()
+            modified = re.sub(
+                r"^Last Modified\s+(.*?)\s{2,}.*$",
+                r"Last modified: \1",
+                line,
+            ).rstrip()
             next_row = True
 
-    return modified
+    # IMPORTANT: don't silently return "" if not found
+    if not modified:
+        return None
+
+    return modified.strip()
 
 def get_table_comment(table_name, schema, engine):
-
-    if engine.dialect.has_table(engine.connect(), table_name, schema=schema):
-        sql = f"""SELECT obj_description('"{schema}"."{table_name}"'"""
-        sql += "::regclass, 'pg_class')"
-        with engine.connect() as conn:
-            res = conn.execute(text(sql)).fetchone()[0]
-        return(res)
-    else:
+    """Return the table comment from pg_class, or '' if none exists."""
+    insp = inspect(engine)
+    if not insp.has_table(table_name, schema=schema):
         return ""
+
+    sql = text("""
+        SELECT obj_description(
+            to_regclass(quote_ident(:schema) || '.' || quote_ident(:table)),
+            'pg_class'
+        )
+    """)
+
+    with engine.connect() as conn:
+        return conn.execute(sql, {"schema": schema, "table": table_name}).scalar() or ""
         
 def set_table_comment(table_name, schema, comment, engine):
 
@@ -486,98 +562,166 @@ def set_table_comment(table_name, schema, comment, engine):
 
     return True
 
-def wrds_to_pg(table_name, schema, engine, wrds_id=None,
-               fpath=None, fix_missing=False, fix_cr=False, 
-               drop=None, obs=None, rename=None, keep=None, where=None,
-               alt_table_name = None, encoding=None, col_types=None, create_roles=True,
-               sas_schema=None, sas_encoding=None, tz='UTC'):
+def wrds_to_pg(
+    table_name,
+    schema,
+    engine,
+    wrds_id=None,
+    *,
+    fix_missing=False,
+    fix_cr=False,
+    drop=None,
+    obs=None,
+    rename=None,
+    keep=None,
+    where=None,
+    alt_table_name=None,
+    encoding="utf-8",
+    col_types=None,
+    create_roles=True,
+    sas_schema=None,
+    sas_encoding=None,
+    tz="UTC",
+):
+    # Resolve WRDS ID
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
 
-    if not alt_table_name:
+    if wrds_id is None:
+        raise ValueError(
+            "You must provide `wrds_id` or set the `WRDS_ID` environment variable."
+        )
+
+    if alt_table_name is None:
         alt_table_name = table_name
-    
-    if not sas_schema:
-        sas_schema = schema
-        
-    make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
-                                    fpath=fpath, schema=schema, 
-                                    drop=drop, rename=rename, keep=keep,
-                                    alt_table_name=alt_table_name, 
-                                    col_types=col_types,
-                                    sas_schema=sas_schema)
 
-    process_sql('DROP TABLE IF EXISTS "' + schema + '"."' + alt_table_name + '" CASCADE', 
-                engine)
-        
+    if sas_schema is None:
+        sas_schema = schema
+
+    make_table_data = get_table_sql(
+        table_name=table_name,
+        wrds_id=wrds_id,
+        schema=schema,
+        drop=drop,
+        rename=rename,
+        keep=keep,
+        alt_table_name=alt_table_name,
+        col_types=col_types,
+        sas_schema=sas_schema,
+    )
+
+    process_sql(
+        f'DROP TABLE IF EXISTS "{schema}"."{alt_table_name}" CASCADE',
+        engine,
+    )
+
     # Create schema (and associated role) if necessary
     insp = inspect(engine)
-    if not schema in insp.get_schema_names():
-        process_sql("CREATE SCHEMA " + schema, engine)
-            
+    if schema not in insp.get_schema_names():
+        process_sql(f"CREATE SCHEMA {schema}", engine)
+
         if create_roles:
             if not role_exists(engine, schema):
                 create_role(engine, schema)
-            process_sql("ALTER SCHEMA " + schema + " OWNER TO " + schema, engine)
-            if not role_exists(engine, "%s_access" % schema):
-                create_role(engine, "%s_access" % schema)
-            process_sql("GRANT USAGE ON SCHEMA " + schema + " TO " + 
-                         schema + "_access", engine)
+            process_sql(f"ALTER SCHEMA {schema} OWNER TO {schema}", engine)
+            if not role_exists(engine, f"{schema}_access"):
+                create_role(engine, f"{schema}_access")
+            process_sql(
+                f"GRANT USAGE ON SCHEMA {schema} TO {schema}_access",
+                engine,
+            )
+
     process_sql(make_table_data["sql"], engine)
-    
+
     print(f"Beginning file import at {get_now()} UTC.")
     print(f"Importing data into {schema}.{alt_table_name}.")
-    p = get_wrds_process(table_name=table_name, fpath=fpath,
-                                 schema=sas_schema, wrds_id=wrds_id,
-                                 drop=drop, keep=keep, fix_cr=fix_cr, 
-                                 fix_missing=fix_missing, 
-                                 obs=obs, rename=rename, where=where,
-                                 sas_encoding=sas_encoding)
 
-    res = wrds_process_to_pg(alt_table_name, schema, engine, p, encoding, tz=tz)
+    with get_wrds_process_stream(
+        table_name=table_name,
+        schema=sas_schema,
+        wrds_id=wrds_id,
+        drop=drop,
+        keep=keep,
+        fix_cr=fix_cr,
+        fix_missing=fix_missing,
+        obs=obs,
+        rename=rename,
+        where=where,
+        sas_encoding=sas_encoding,
+        stream_encoding=encoding,
+    ) as stream:
+        res = wrds_process_to_pg(
+            alt_table_name,
+            schema,
+            engine,
+            stream,
+            tz=tz,
+        )
+
     print(f"Completed file import at {get_now()} UTC.\n")
-
     return res
 
-def wrds_process_to_pg(table_name, schema, engine, p, encoding=None, tz='UTC'):
-    
-    if not encoding:
-        encoding = "UTF8"
-    
+def wrds_process_to_pg(table_name, schema, engine, p, tz="UTC", copy_encoding="UTF8", chunk_size=1 << 20):
+    """
+    Stream CSV text from file-like object `p` into Postgres using COPY FROM STDIN.
+
+    Parameters
+    ----------
+    p:
+        A *text* stream (already decoded), positioned at the start of a CSV where
+        the first line is the header.
+        NOTE: This function does NOT close `p`; the caller owns the stream.
+    copy_encoding:
+        Encoding declared in the COPY command (usually 'UTF8').
+        This is about how Postgres interprets incoming bytes; since psycopg sends
+        encoded text, leaving this as UTF8 is usually correct.
+    chunk_size:
+        How many characters to read per chunk while streaming to Postgres.
+    """
+
     # The first line has the variable names ...
-    var_names = p.readline().rstrip().lower().split(sep=",")
+    header = p.readline()
+    if not header:
+        raise ValueError("No data received from WRDS/SAS process (empty stream).")
+
+    var_names = header.rstrip("\n\r").lower().split(",")
     var_str = '("' + '", "'.join(var_names) + '")'
-    
-    # ... the rest is the data
-    copy_cmd =  f'COPY "{schema}"."{table_name}" {var_str}'
-    copy_cmd += f" FROM STDIN CSV ENCODING '{encoding}'"
-    
+
+    copy_cmd = f'COPY "{schema}"."{table_name}" {var_str} FROM STDIN CSV ENCODING \'{copy_encoding}\''
+
     with engine.connect() as conn:
         connection_fairy = conn.connection
         try:
             with connection_fairy.cursor() as curs:
                 curs.execute("SET DateStyle TO 'ISO, MDY'")
                 curs.execute(f"SET TimeZone TO '{tz}'")
+
                 with curs.copy(copy_cmd) as copy:
-                    while data := p.read():
+                    while True:
+                        data = p.read(chunk_size)
+                        if not data:
+                            break
                         copy.write(data)
-                curs.close()
         finally:
             connection_fairy.commit()
             conn.close()
-            p.close()
+
     return True
 
-def wrds_update(table_name, schema, 
-                host=os.getenv("PGHOST"),
-                wrds_id=os.getenv("WRDS_ID"), 
-                dbname=os.getenv("PGDATABASE"), 
-                engine=None, 
-                force=False, 
-                fix_missing=False, fix_cr=False, drop=None, keep=None, 
-                obs=None, rename=None, where=None,  
-                alt_table_name=None, 
-                col_types=None, create_roles=True,
-                encoding=None, sas_schema=None, sas_encoding=None,
-                fpath=None, tz='UTC'):
+def wrds_update(
+    table_name, schema,
+    host=None,
+    wrds_id=None,
+    dbname=None,
+    engine=None,
+    force=False,
+    fix_missing=False, fix_cr=False, drop=None, keep=None,
+    obs=None, rename=None, where=None,
+    alt_table_name=None,
+    col_types=None, create_roles=True,
+    encoding=None, sas_schema=None, sas_encoding=None,
+    tz="UTC",
+):
     """Update a PostgreSQL table using WRDS SAS data.
 
     Parameters
@@ -682,78 +826,93 @@ def wrds_update(table_name, schema,
     >>> wrds_update("feed21_bankruptcy_notification", 
                         "audit", drop="match: closest: prior:")
     """
-          
-    if not sas_schema:
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
+        
+    if host is None:
+        host = os.environ.get("PGHOST")
+        
+    if dbname is None:
+        dbname = os.environ.get("PGDATABASE")
+
+    if wrds_id is None:
+        raise ValueError(
+            "You must provide `wrds_id` or set the `WRDS_ID` environment variable."
+        )
+
+    if sas_schema is None:
         sas_schema = schema
-        
-    if not alt_table_name:
+    if alt_table_name is None:
         alt_table_name = table_name
-        
-    if not engine:
+
+    if engine is None:
         if not (host and dbname):
-            print("Error: Missing connection variables. " + 
-                  "Please specify engine or (host, dbname).")
-            quit()
-        else:
-            engine = create_engine("postgresql+psycopg://" + host + "/" + dbname) 
-    if wrds_id:
-        # 1. Get comments from PostgreSQL database
-        comment = get_table_comment(alt_table_name, schema, engine)
-        
-        # 2. Get modified date from WRDS
-        modified = get_modified_str(table_name, sas_schema, wrds_id, 
-                                    encoding=encoding, fpath=fpath)
-        if not modified:
-            return False
-    else:
-        now = get_now()
-        comment = f'Updated on {now} UTC.' 
-        modified = comment
-        # 3. If updated table available, get from WRDS
-    if modified == comment and not force and not fpath:
+            raise ValueError("Specify `engine` or both `host` and `dbname`.")
+        engine = create_engine(f"postgresql+psycopg://{host}/{dbname}")
+
+    # 1. Get comments from PostgreSQL database
+    comment = get_table_comment(alt_table_name, schema, engine)
+
+    # 2. Get modified date from WRDS
+    modified = get_modified_str(table_name, sas_schema, wrds_id, encoding=encoding)
+    if not modified:
+        return False
+
+    # 3. If updated table available, get from WRDS
+    if modified == comment and not force:
         print(f"{schema}.{alt_table_name} already up to date.")
         return False
     elif modified == "" and not force:
         print("WRDS flaked out!")
         return False
     else:
-        if fpath:
-            print("Importing local file.")
-        elif force:
+        if force:
             print("Forcing update based on user request.")
         else:
             print(f"Updated {schema}.{table_name} is available.")
             print("Getting from WRDS.")
-        wrds_to_pg(table_name=table_name, schema=schema, engine=engine, 
-                   wrds_id=wrds_id,
-                   fpath=fpath, fix_missing=fix_missing, 
-                   fix_cr=fix_cr,
-                   drop=drop, keep=keep, obs=obs, rename=rename,
-                   alt_table_name=alt_table_name,
-                   encoding=encoding, col_types=col_types, 
-                   create_roles=create_roles,
-                   where=where, sas_schema=sas_schema, 
-                   sas_encoding=sas_encoding,
-                   tz=tz)
+
+        wrds_to_pg(
+            table_name=table_name,
+            schema=schema,
+            engine=engine,
+            wrds_id=wrds_id,
+            fix_missing=fix_missing,
+            fix_cr=fix_cr,
+            drop=drop,
+            keep=keep,
+            obs=obs,
+            rename=rename,
+            where=where,
+            alt_table_name=alt_table_name,
+            encoding=encoding,
+            col_types=col_types,
+            create_roles=create_roles,
+            sas_schema=sas_schema,
+            sas_encoding=sas_encoding,
+            tz=tz,
+        )
+
         set_table_comment(alt_table_name, schema, modified, engine)
-        
+
         if create_roles:
             if not role_exists(engine, schema):
                 create_role(engine, schema)
-            
-            sql = f'ALTER TABLE "{schema}"."{alt_table_name}" OWNER TO {schema}'
-            process_sql(sql, engine)
 
-            if not role_exists(engine, "%s_access" % schema):
-                create_role(engine, "%s_access" % schema)
-            
-            sql = f'GRANT SELECT ON "{schema}"."{alt_table_name}"'
-            sql += f' TO {schema}_access'
-            res = process_sql(sql, engine)
-        else:
-            res = True
+            process_sql(
+                f'ALTER TABLE "{schema}"."{alt_table_name}" OWNER TO {schema}',
+                engine,
+            )
 
-        return res
+            if not role_exists(engine, f"{schema}_access"):
+                create_role(engine, f"{schema}_access")
+
+            process_sql(
+                f'GRANT SELECT ON "{schema}"."{alt_table_name}" TO {schema}_access',
+                engine,
+            )
+
+        return True
 
 def process_sql(sql, engine):
 
@@ -802,64 +961,82 @@ def create_role(engine, role):
     process_sql("CREATE ROLE %s" % role, engine)
     return True
 
-def get_pg_tables(schema, engine, keys=False):
-
-    metadata = MetaData()    
-    metadata.reflect(bind=engine, schema=schema)
-    
-    if keys:
-        table_list = [key for key in metadata.tables.keys()]
-    else:
-        table_list = [key.name for key in metadata.tables.values()]
-    return table_list
-
-def get_cols(table, schema, engine):
-    metadata = MetaData()    
-    metadata.reflect(bind=engine, schema=schema)
-    return [col.name for col in metadata.tables[table].columns]
-
 def get_wrds_url(wrds_id):
     host = "wrds-pgdata.wharton.upenn.edu"
     port = "9737"
     dbname = "wrds"
     return f"postgresql+psycopg://{wrds_id}@{host}:{port}/{dbname}"
 
-def get_wrds_tables(schema, wrds_id=None):
 
-    if not wrds_id:
-        wrds_id = os.getenv("WRDS_ID")
-    wrds_url = get_wrds_url(wrds_id)
-    wrds_engine = create_engine(wrds_url,
-                                connect_args = {'sslmode':'require'})
-    
-    return get_pg_tables(schema, wrds_engine)
+def get_wrds_tables(schema, wrds_id=None, encoding="utf-8"):
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
+    if wrds_id is None:
+        raise ValueError("You must provide `wrds_id` or set the `WRDS_ID` environment variable.")
 
-def get_pq_file(table_name, schema, data_dir=os.getenv("DATA_DIR")):
-    
-    data_dir = os.path.expanduser(data_dir)
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
+    lib = schema.upper()
 
-    schema_dir = Path(data_dir, schema)
-    if not os.path.exists(schema_dir):
-        os.makedirs(schema_dir)
-        
-    pq_file = Path(data_dir, schema, table_name).with_suffix('.parquet')
-    return pq_file
+    sas_code = f"""
+        proc sql;
+            SELECT memname
+            FROM dictionary.tables
+            WHERE libname = "{lib}"
+            ORDER BY memname;
+        quit;
+    """
 
-def wrds_update_pq(table_name, schema, 
-                   wrds_id=wrds_id, 
-                   data_dir=os.getenv("DATA_DIR"),
-                   force=False, 
-                   fix_missing=False, 
-                   fix_cr=False, drop=None, keep=None, 
-                   obs=None, rename=None, 
-                   where=None,
-                   alt_table_name=None,
-                   col_types=None,
-                   encoding="utf-8", 
-                   sas_schema=None, 
-                   sas_encoding=None):
+    with get_process_stream(sas_code, wrds_id=wrds_id, encoding=encoding) as stream:
+        text = stream.read()
+
+    # Parse memnames from listing output. This is robust enough for PROC SQL output.
+    # It looks for "words" in the memname column; filters out headers/blank lines.
+    names = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line in {"MEMNAME"}:
+            continue
+        if "The SAS System" in line or "Monday" in line or "Tuesday" in line:
+            continue
+        # memname is usually a single token
+        if re.fullmatch(r"[A-Z0-9_]+", line):
+            names.append(line)
+
+    return names
+
+def get_pq_file(table_name, schema, data_dir=None):
+    if data_dir is None:
+        data_dir = os.environ.get("DATA_DIR")
+    if data_dir is None:
+        raise ValueError("You must provide `data_dir` or set the"
+                         " `DATA_DIR` environment variable.")
+
+    base = Path(data_dir).expanduser()
+    schema_dir = base / schema
+    schema_dir.mkdir(parents=True, exist_ok=True)
+
+    return (schema_dir / table_name).with_suffix(".parquet")
+
+def wrds_update_pq(
+    table_name,
+    schema,
+    wrds_id=None,
+    data_dir=None,
+    force=False,
+    fix_missing=False,
+    fix_cr=False,
+    drop=None,
+    keep=None,
+    obs=None,
+    rename=None,
+    where=None,
+    alt_table_name=None,
+    col_types=None,
+    encoding="utf-8",
+    sas_schema=None,
+    sas_encoding=None,
+):
     """Update a local parquet version of a WRDS table.
 
     Parameters
@@ -948,60 +1125,98 @@ def wrds_update_pq(table_name, schema,
     >>> wrds_update_csv("feed21_bankruptcy_notification", 
                         "audit", drop="match: closest: prior:")
     """
-    if not sas_schema:
+    # --- resolve environment-backed defaults ---
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
+    if wrds_id is None:
+        raise ValueError("You must provide `wrds_id` or set the `WRDS_ID` environment variable.")
+
+    if data_dir is None:
+        data_dir = os.environ.get("DATA_DIR")
+    if data_dir is None:
+        raise ValueError("You must provide `data_dir` or set the `DATA_DIR` environment variable.")
+
+    # --- normalize defaults ---
+    if sas_schema is None:
         sas_schema = schema
-        
-    if not alt_table_name:
+    if alt_table_name is None:
         alt_table_name = table_name
-    
-    pq_file = get_pq_file(table_name=alt_table_name, schema=schema, 
-                          data_dir=data_dir)
-                
-    modified = get_modified_str(table_name=table_name, 
-                                sas_schema=sas_schema, wrds_id=wrds_id, 
-                                encoding=encoding)
-    if not modified:
+
+    pq_file = get_pq_file(table_name=alt_table_name, schema=schema, data_dir=data_dir)
+
+    modified = get_modified_str(
+        table_name=table_name,
+        sas_schema=sas_schema,
+        wrds_id=wrds_id,
+        encoding=encoding,
+    )
+    if modified is None:
         return False
-    
+
     pq_modified = get_modified_pq(pq_file)
-        
+
     if modified == pq_modified and not force:
-        print(schema + "." + alt_table_name + " already up to date.")
+        print(f"{schema}.{alt_table_name} already up to date.")
         return False
+
     if force:
         print("Forcing update based on user request.")
     else:
-        print("Updated %s.%s is available." % (schema, alt_table_name))
+        print(f"Updated {schema}.{alt_table_name} is available.")
         print("Getting from WRDS.")
+
     print(f"Beginning file download at {get_now()} UTC.")
     print("Saving data to temporary CSV.")
-    csv_file = tempfile.NamedTemporaryFile(suffix = ".csv.gz").name
-    wrds_to_csv(table_name, schema, csv_file, 
-                wrds_id=wrds_id, 
-                fix_missing=fix_missing, 
-                fix_cr=fix_cr, 
-                drop=drop, keep=keep, 
-                obs=obs, rename=rename,
-                encoding=encoding, 
-                where=where,
-                sas_schema=sas_schema, 
-                sas_encoding=sas_encoding)
-    print("Converting temporary CSV to parquet.")
-    make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
-                                    schema=sas_schema, 
-                                    drop=drop, rename=rename, keep=keep, 
-                                    col_types=col_types)
 
-    col_types = make_table_data["col_types"]
-    names = make_table_data["names"]
-    csv_to_pq(csv_file, pq_file, names, col_types, modified)
+    csv_file = tempfile.NamedTemporaryFile(suffix=".csv.gz", delete=False).name
+    try:
+        wrds_to_csv(
+            table_name,
+            schema,
+            csv_file,
+            wrds_id=wrds_id,
+            fix_missing=fix_missing,
+            fix_cr=fix_cr,
+            drop=drop,
+            keep=keep,
+            obs=obs,
+            rename=rename,
+            encoding=encoding,
+            where=where,
+            sas_schema=sas_schema,
+            sas_encoding=sas_encoding,
+        )
+
+        print("Converting temporary CSV to parquet.")
+        make_table_data = get_table_sql(
+            table_name=table_name,
+            wrds_id=wrds_id,
+            schema=sas_schema,
+            drop=drop,
+            rename=rename,
+            keep=keep,
+            col_types=col_types,
+        )
+
+        col_types_out = make_table_data["col_types"]
+        names = make_table_data["names"]
+
+        csv_to_pq_arrow_stream(csv_file, pq_file, names, col_types_out, modified)
+
+    finally:
+        # optional: clean up the temp csv; only do this if csv_to_pq doesn't need it afterward
+        try:
+            os.remove(csv_file)
+        except OSError:
+            pass
+
     print("Parquet file: " + str(pq_file))
     print(f"Completed creation of parquet file at {get_now()}.\n")
     return True
 
 def wrds_csv_to_pq(table_name, schema, csv_file, pq_file, 
                    col_types=None,
-                   wrds_id=os.getenv("WRDS_ID"),
+                   wrds_id=None,
                    modified='',
                    row_group_size = 1048576):
     make_table_data = get_table_sql(table_name=table_name, wrds_id=wrds_id,
@@ -1011,59 +1226,135 @@ def wrds_csv_to_pq(table_name, schema, csv_file, pq_file,
 
     col_types = make_table_data["col_types"]
     names = make_table_data["names"]
-    csv_to_pq(csv_file, pq_file, names, col_types, 
-              modified=modified, 
-              row_group_size=row_group_size)
+    csv_to_pq_arrow_stream(csv_file, pq_file, names, col_types, 
+                           modified=modified, 
+                           row_group_size=row_group_size)
 
-def wrds_to_csv(table_name, schema, csv_file, 
-                wrds_id=os.getenv("WRDS_ID"), 
-                fix_missing=False, fix_cr=False, drop=None, keep=None, 
-                obs=None, rename=None, where=None,
-                encoding="utf-8", 
-                sas_schema=None, sas_encoding=None):
-          
-    if not sas_schema:
+def wrds_to_csv(
+    table_name,
+    schema,
+    csv_file,
+    wrds_id=None,
+    *,
+    fix_missing=False,
+    fix_cr=False,
+    drop=None,
+    keep=None,
+    obs=None,
+    rename=None,
+    where=None,
+    encoding="utf-8",
+    sas_schema=None,
+    sas_encoding=None,
+):
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
+    if wrds_id is None:
+        raise ValueError("You must provide `wrds_id` or set the `WRDS_ID` environment variable.")
+
+    if sas_schema is None:
         sas_schema = schema
-    p = get_wrds_process(table_name=table_name, 
-                         schema=sas_schema, wrds_id=wrds_id,
-                         drop=drop, keep=keep, fix_cr=fix_cr, 
-                         fix_missing=fix_missing, 
-                         obs=obs, rename=rename,
-                         where=where,
-                         encoding=encoding, sas_encoding=sas_encoding)
-    with gzip.GzipFile(csv_file, mode='wb') as f:
-        shutil.copyfileobj(p, f)
-        f.close()
+
+    # get_wrds_process_stream should yield a *text* CSV stream
+    with get_wrds_process_stream(
+        table_name=table_name,
+        schema=sas_schema,
+        wrds_id=wrds_id,
+        drop=drop,
+        keep=keep,
+        fix_cr=fix_cr,
+        fix_missing=fix_missing,
+        obs=obs,
+        rename=rename,
+        where=where,
+        sas_encoding=sas_encoding,
+        stream_encoding=encoding,
+    ) as stream:
+        # gzip expects bytes; wrap it in TextIOWrapper to write str safely
+        with gzip.open(csv_file, mode="wt", encoding=encoding, newline="") as f:
+            shutil.copyfileobj(stream, f)
         
 def get_modified_pq(file_name):
-    
-    if os.path.exists(file_name):
-        md = pq.read_schema(file_name)
-        schema_md = md.metadata
-        if not schema_md:
-            return ''
-        if b'last_modified' in schema_md.keys():
-            last_modified = schema_md[b'last_modified'].decode('utf-8')
-        else:
-            last_modified = ''
-    else:
-        last_modified = ''
-    return last_modified
+    if not os.path.exists(file_name):
+        return ""
 
-def csv_to_pq(csv_file, pq_file, names, col_types, modified,
-              row_group_size = 1048576):
-    with duckdb.connect() as con:
-        df = con.from_csv_auto(csv_file,
-                               compression = "gzip",
-                               names = names,
-                               header = True,
-                               dtype = col_types)
-        df_arrow = df.arrow()
-        my_metadata = (df_arrow
-                       .schema
-                       .with_metadata({b'last_modified': modified.encode()}))
-        to_write = df_arrow.cast(my_metadata)
-        pq.write_table(to_write, pq_file, row_group_size = row_group_size)
+    md = pq.read_schema(file_name).metadata
+    if not md:
+        return ""
+
+    value = md.get(b"last_modified")
+    if value is None:
+        return ""
+
+    return value.decode("utf-8")
+
+
+_PG_TO_ARROW = {
+    "integer": pa.int32(),
+    "bigint": pa.int64(),
+    "double precision": pa.float64(),
+    "real": pa.float32(),
+    "text": pa.string(),
+    "varchar": pa.string(),
+    "date": pa.date32(),
+    "timestamp": pa.timestamp("us"),
+    "boolean": pa.bool_(),
+}
+
+def _arrow_convert_options(names, col_types):
+    # col_types: dict name -> postgres type string
+    column_types = {}
+    for name in names:
+        t = col_types.get(name)
+        if t is None:
+            continue
+        t_norm = t.lower()
+        if t_norm in _PG_TO_ARROW:
+            column_types[name] = _PG_TO_ARROW[t_norm]
+    return pacsv.ConvertOptions(column_types=column_types)
+
+def csv_to_pq_arrow_stream(
+    csv_file,
+    pq_file,
+    names,
+    col_types,
+    modified,
+    row_group_size=1_048_576,
+    block_size=1 << 20,  # bytes per CSV read block (tune)
+):
+    with gzip.open(csv_file, "rb") as f:
+        read_opts = pacsv.ReadOptions(
+            use_threads=True,
+            block_size=block_size,
+            autogenerate_column_names=False,
+        )
+        parse_opts = pacsv.ParseOptions(delimiter=",")
+        convert_opts = _arrow_convert_options(names, col_types)
+
+        reader = pacsv.open_csv(
+            f,
+            read_options=read_opts,
+            parse_options=parse_opts,
+            convert_options=convert_opts,
+        )
+
+        writer = None
+        try:
+            for batch in reader:
+                if writer is None:
+                    # attach metadata once we know the final schema
+                    schema = batch.schema.with_metadata(
+                        {b"last_modified": modified.encode("utf-8")}
+                    )
+                    writer = pq.ParquetWriter(
+                        pq_file,
+                        schema=schema,
+                        # You can add compression="zstd" or "snappy" if you want
+                    )
+                writer.write_batch(batch, row_group_size=row_group_size)
+        finally:
+            if writer is not None:
+                writer.close()
 
 def modified_encode(last_modified):
     date_time_str = last_modified.split("Last modified: ")[1]
@@ -1134,14 +1425,25 @@ def set_modified_csv(file_name, last_modified):
     os.utime(file_name, times = (current_time, mtimestamp))    
     return True
 
-def wrds_update_csv(table_name, schema,  
-                    wrds_id=os.getenv("WRDS_ID"), 
-                    data_dir=os.getenv("CSV_DIR"),
-                    force=False, fix_missing=False, fix_cr=False,
-                    drop=None, keep=None, obs=None, rename=None,
-                    where=None, alt_table_name=None,
-                    encoding=None,
-                    sas_schema=None, sas_encoding=None):
+def wrds_update_csv(
+    table_name,
+    schema,
+    wrds_id=None,
+    data_dir=None,
+    force=False,
+    fix_missing=False,
+    fix_cr=False,
+    drop=None,
+    keep=None,
+    obs=None,
+    rename=None,
+    where=None,
+    alt_table_name=None,
+    encoding="utf-8",
+    sas_schema=None,
+    sas_encoding=None,
+):
+    """Update a local gzipped CSV version of a WRDS table."""
     """Update a local gzipped CSV version of a WRDS table.
 
     Parameters
@@ -1221,58 +1523,68 @@ def wrds_update_csv(table_name, schema,
     >>> wrds_update_csv("feed21_bankruptcy_notification", 
                         "audit", drop="match: closest: prior:")
     """
+    # --- env-backed defaults ---
+    if wrds_id is None:
+        wrds_id = os.environ.get("WRDS_ID")
+    if wrds_id is None:
+        raise ValueError("You must provide `wrds_id` or set the `WRDS_ID` environment variable.")
 
-    if not alt_table_name:
+    if data_dir is None:
+        data_dir = os.environ.get("CSV_DIR")
+    if data_dir is None:
+        raise ValueError("You must provide `data_dir` or set the `CSV_DIR` environment variable.")
+
+    # --- normalize defaults ---
+    if alt_table_name is None:
         alt_table_name = table_name
-    
-    if not encoding:
-        encoding = "utf-8"
-
-    if not sas_schema:
+    if sas_schema is None:
         sas_schema = schema
-        
-    schema_dir = Path(data_dir, schema)
-    
-    if not os.path.exists(schema_dir):
-        os.makedirs(schema_dir)
-    
-    csv_file = Path(data_dir, schema, alt_table_name).with_suffix('.csv.gz')
-    modified = get_modified_str(table_name, sas_schema, wrds_id)
-    if not modified:
+
+    schema_dir = Path(data_dir) / schema
+    schema_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_file = (schema_dir / alt_table_name).with_suffix(".csv.gz")
+
+    modified = get_modified_str(
+        table_name=table_name,
+        sas_schema=sas_schema,
+        wrds_id=wrds_id,
+        encoding=encoding,
+    )
+    if modified is None:
         return False
 
-    if os.path.exists(csv_file):
-        csv_modified = get_modified_csv(csv_file)
-    else:
-        csv_modified = ""
+    csv_modified = get_modified_csv(csv_file) if csv_file.exists() else ""
+
     if modified == csv_modified and not force:
-        print(f"{schema}.{table_name} already up to date.\n")
+        print(f"{schema}.{alt_table_name} already up to date.\n")
         return False
+
     if force:
         print("Forcing update based on user request.")
     else:
-        print(f"Updated {schema}.{table_name} is available.")
+        print(f"Updated {schema}.{alt_table_name} is available.")
         print("Getting from WRDS.")
+
     print(f"Beginning file download at {get_now()} UTC.")
-    wrds_to_csv(table_name=table_name, 
-                schema=schema, 
-                csv_file=csv_file,
-                wrds_id=wrds_id, 
-                fix_missing=fix_missing, 
-                fix_cr=fix_cr,
-                drop=drop, keep=keep,
-                obs=obs, rename=rename,
-                where=where,
-                encoding=encoding,
-                sas_schema=sas_schema, 
-                sas_encoding=sas_encoding)
+
+    wrds_to_csv(
+        table_name=table_name,
+        schema=schema,
+        csv_file=csv_file,
+        wrds_id=wrds_id,
+        fix_missing=fix_missing,
+        fix_cr=fix_cr,
+        drop=drop,
+        keep=keep,
+        obs=obs,
+        rename=rename,
+        where=where,
+        encoding=encoding,
+        sas_schema=sas_schema,
+        sas_encoding=sas_encoding,
+    )
+
     set_modified_csv(csv_file, modified)
     print(f"Completed file download at {get_now()} UTC.\n")
     return True
-
-def get_type_dict(table, schema, engine):
-    pgDialect = dialect()
-    metadata_obj = MetaData()
-    table_data = Table(table, metadata_obj, schema=schema, autoload_with=engine)
-    return {i.name: i.type.compile(dialect=pgDialect) 
-                    for i in table_data.c}
