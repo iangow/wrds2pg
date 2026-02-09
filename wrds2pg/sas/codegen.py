@@ -4,11 +4,13 @@ from .metadata import get_table_sql
 
 def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
                      drop=None, keep=None, fix_cr = False, 
+                     col_types=None,
                      fix_missing = False, obs=None, where=None,
                      rename=None, encoding=None, sas_encoding=None):
     
     make_table_data = get_table_sql(table_name=table_name, schema=schema, 
                                     wrds_id=wrds_id, fpath=fpath,
+                                    col_types=col_types,
                                     drop=drop, rename=rename, keep=keep)
 
     col_types = make_table_data["col_types"]
@@ -72,6 +74,22 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
         # (A SAS limitation)
         new_table = "%s%s" % (schema, table_name)
         new_table = new_table[0:min(len(new_table), 32)]
+        
+        bigints = [k for k, v in col_types.items() if v == "bigint"]
+        
+        bigints_str = ""
+        if bigints:
+            decl = "\n".join([f"length {v}__chr $32;" for v in bigints])
+            conv = "\n".join(
+                [
+                    f"if missing({v}) then {v}__chr = '';"
+                    f"else {v}__chr = strip(putn({v}, '20.'));"
+                    f"drop {v};"
+                    f"rename {v}__chr = {v};"
+                    for v in bigints
+                ]
+            )
+            bigints_str = decl + "\n" + conv
 
         if col_types:
             # ---- everything else that is NOT date/time/timestamp/bigint: blank format ----
@@ -80,10 +98,6 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
                 if v not in ["date", "time", "timestamp", "bigint"]
             ]
             unformat_str = " ".join([f"attrib {var} format=;" for var in unformat])
-            
-            # ---- bigint: force non-scientific text rendering ----
-            bigints = [k for k, v in col_types.items() if v == "bigint"]
-            bigints_str = " ".join([f"attrib {var} format=F20.0;" for var in bigints])
             
             # ---- dates / times / timestamps ----
             dates = [k for k, v in col_types.items() if v == "date"]
@@ -96,6 +110,9 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             timestamps_str = " ".join([f"attrib {var} format=E8601DT19.;" for var in timestamps])
         else:
             unformat_str = ""
+            dates_str = ""
+            times_str = ""
+            timestamps_str = ""
         
         if fix_missing:
             fix_missing_str = """
@@ -114,6 +131,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             * Fix missing values;
             data {new_table};
                 set {schema}.{sas_table}{sas_encoding_str};
+                {bigints_str}
                 {fix_cr_code}
                 {fix_missing_str}
                 {where_str}
@@ -122,7 +140,6 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             proc datasets lib=work;
                 modify {new_table}; 
                     {unformat_str}
-                    {bigints_str}
                     {dates_str}
                     {times_str}
                     {timestamps_str}

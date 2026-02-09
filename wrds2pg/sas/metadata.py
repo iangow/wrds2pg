@@ -184,9 +184,7 @@ def get_table_sql(
     inferred = {n: code_row_dict(r) for n, r in zip(names, rows)}
 
     # override inferred types if provided
-    if col_types:
-        for k, v in col_types.items():
-            inferred[k.lower()] = v
+    inferred = {**inferred, **{k.lower(): v for k, v in (col_types or {}).items()}}
 
     rows_str = ", ".join([f'"{n}" {inferred[n]}' for n in names])
     create_sql = f'CREATE TABLE "{schema}"."{alt_table_name}" ({rows_str})'
