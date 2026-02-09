@@ -26,14 +26,16 @@ def get_table_comment(table_name: str, schema: str, engine: Engine) -> str:
 def set_table_comment(table_name: str, schema: str, comment: str, engine: Engine) -> None:
     """
     Set table comment safely.
-
-    Uses a parameter for the comment to avoid quoting issues.
     """
-    sql = text(f'COMMENT ON TABLE "{schema}"."{table_name}" IS :comment')
+    comment_sql = comment.replace("'", "''")
 
+    sql = text(
+        f'COMMENT ON TABLE "{schema}"."{table_name}" IS \'{comment_sql}\''
+    )
     with engine.begin() as conn:
-        conn.execute(sql, {"comment": comment})
+        conn.exec_driver_sql(sql.text)
 
+    return True
 
 def process_sql(sql: str, engine: Engine) -> CursorResult:
     """
