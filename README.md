@@ -164,9 +164,6 @@ wrds_update(table_name="mcti", schema="crsp", host=your_pghost,
 	dbname=your_pg_database, 
 	fix_missing=True, fix_cr=True, drop="b30ret b30ind", obs=10, 
 	rename="caldt=calendar_date", force=True)
-
-# 2. Upload test.sas7bdat to pg as crsp.mcti
-wrds_update(table_name="mcti", schema="crsp", fpath="your_path/test.sas7bdat")
 ```
 
 ### Report bugs

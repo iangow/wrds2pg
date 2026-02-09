@@ -1,10 +1,36 @@
+# ---- R / RStudio ----
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
-wrds2pg.egg-info
-dist
-build
-data
-.ipynb_checkpoints
-wrds2pg/__pycache__
+
+# ---- Python build artifacts ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ---- Virtual environments ----
+.venv/
+venv/
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- Data artifacts (WRDS outputs) ----
+data/
+*.csv
+*.csv.gz
+*.parquet
+
+# ---- SAS / WRDS temp files ----
+*.log
+*.lst
+*.sas7bdat
+*.sas7bcat
+
+# ---- OS cruft ----
+.DS_Store
