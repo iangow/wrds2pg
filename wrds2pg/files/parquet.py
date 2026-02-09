@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 _PG_TO_ARROW = {
     "text": pa.string(),
     "integer": pa.int32(),
+    "bigint": pa.int64(),
     "float8": pa.float64(),
     "date": pa.date32(),
 

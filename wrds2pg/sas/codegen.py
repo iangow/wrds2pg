@@ -74,23 +74,26 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
         new_table = new_table[0:min(len(new_table), 32)]
 
         if col_types:
-            # print(col_types)
-            unformat = [key for key in col_types if col_types[key] 
-                          not in ['date', 'time', 'timestamp']]
-            unformat_str = ' '.join([ 'attrib ' + var + ' format=;'
-                                       for var in unformat])
-
-            dates = [key for key in col_types if col_types[key]=='date']
-            dates_str = ' '.join([ 'attrib ' + var + ' format=YYMMDD10.;'
-                                       for var in dates])
-
-            times = [key for key in col_types if col_types[key] == 'time']
-            times_str = ' '.join([f"attrib {var} format=TIME8.;" for var in times])
-
-            timestamps = [key for key in col_types 
-                              if col_types[key]=='timestamp']
-            timestamps_str = ' '.join([ 'attrib ' + var + ' format=E8601DT19.;'
-                                       for var in timestamps])
+            # ---- everything else that is NOT date/time/timestamp/bigint: blank format ----
+            unformat = [
+                k for k, v in col_types.items()
+                if v not in ["date", "time", "timestamp", "bigint"]
+            ]
+            unformat_str = " ".join([f"attrib {var} format=;" for var in unformat])
+            
+            # ---- bigint: force non-scientific text rendering ----
+            bigints = [k for k, v in col_types.items() if v == "bigint"]
+            bigints_str = " ".join([f"attrib {var} format=F20.0;" for var in bigints])
+            
+            # ---- dates / times / timestamps ----
+            dates = [k for k, v in col_types.items() if v == "date"]
+            dates_str = " ".join([f"attrib {var} format=YYMMDD10.;" for var in dates])
+            
+            times = [k for k, v in col_types.items() if v == "time"]
+            times_str = " ".join([f"attrib {var} format=TIME8.;" for var in times])
+            
+            timestamps = [k for k, v in col_types.items() if v == "timestamp"]
+            timestamps_str = " ".join([f"attrib {var} format=E8601DT19.;" for var in timestamps])
         else:
             unformat_str = ""
         
@@ -119,6 +122,7 @@ def get_wrds_sas(table_name, schema, wrds_id=None, fpath=None,
             proc datasets lib=work;
                 modify {new_table}; 
                     {unformat_str}
+                    {bigints_str}
                     {dates_str}
                     {times_str}
                     {timestamps_str}
