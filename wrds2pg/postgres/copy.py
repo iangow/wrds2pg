@@ -21,8 +21,6 @@ def wrds_process_to_pg(table_name, schema, engine, p, tz="UTC", copy_encoding="U
         NOTE: This function does NOT close `p`; the caller owns the stream.
     copy_encoding:
         Encoding declared in the COPY command (usually 'UTF8').
-        This is about how Postgres interprets incoming bytes; since psycopg sends
-        encoded text, leaving this as UTF8 is usually correct.
     chunk_size:
         How many characters to read per chunk while streaming to Postgres.
     """

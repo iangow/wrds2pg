@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wrds2pg"
-version = "1.0.36"
+version = "1.0.37"
 
 description = "Convert WRDS SAS data to PostgreSQL, parquet, or CSV."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -20,7 +20,7 @@ dependencies = [
   "sqlalchemy>=2.0.0",
   "paramiko",
   "psycopg[binary]",
-  "pyarrow",
+  "pyarrow"
 ]
 
 classifiers = [
@@ -36,3 +36,11 @@ Issues = "https://github.com/iangow/wrds2pg/issues"
 
 [tool.setuptools]
 packages = { find = {} }
+
+[tool.deptry.package_module_name_map]
+ibis-framework = "ibis"
+psycopg = "psycopg"
+sqlalchemy = "sqlalchemy"
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["psycopg"]

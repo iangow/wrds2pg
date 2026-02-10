@@ -114,7 +114,7 @@ def wrds_update(
 
     col_types: Dict [Optional]
         Dictionary of PostgreSQL data types to be used when importing data to PostgreSQL or writing to Parquet files.
-        For Parquet files, conversion from PostgreSQL to PyArrow types is handled by DuckDB.
+        For Parquet files, conversion from PostgreSQL to PyArrow types is handled by PyArrow.
         Only a subset of columns needs to be supplied.
         Supplied types should be compatible with data emitted by SAS's PROC EXPORT 
         (i.e., one can't "fix" arbitrary type issues using this argument).
@@ -315,7 +315,7 @@ def wrds_update_pq(
     col_types: Dict [Optional]
         Dictionary of PostgreSQL data types to be used when importing data to 
         PostgreSQL or writing to Parquet files. For Parquet files, conversion 
-        from PostgreSQL to PyArrow types is handled by DuckDB. Only a subset of 
+        from PostgreSQL to PyArrow types is handled by PyArrow. Only a subset of 
         columns needs to be supplied. Supplied types should be compatible with 
         data emitted by SAS's PROC EXPORT  (i.e., one can't "fix" arbitrary type
         issues using this argument). For example, 

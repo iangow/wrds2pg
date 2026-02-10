@@ -24,8 +24,7 @@ def make_engine(
 
     Notes
     -----
-    Authentication is handled by libpq/psycopg defaults
-    (PGUSER, PGPASSWORD, .pgpass, Kerberos, etc.).
+    Authentication is handled by other libraries.
 
     The connection URL intentionally does not embed credentials.
     """
