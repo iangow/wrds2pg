@@ -11,6 +11,7 @@ from .api import (
 
 from .postgres.engine import make_engine
 from .postgres.ddl import process_sql
+from .sas.metadata import proc_contents
 
 __all__ = [
     "wrds_update",
@@ -21,4 +22,5 @@ __all__ = [
     "run_file_sql",
     "make_engine",
     "process_sql",
+    "proc_contents"
 ]
